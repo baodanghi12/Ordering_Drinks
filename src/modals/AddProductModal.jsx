@@ -9,7 +9,7 @@ import {
   InputNumber,
   message,
 } from "antd";
-import ImageUpload from "./ImageUpload";
+import ImageUpload from "../components/ImageUpload";
 import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";
 
 const { Option } = Select;

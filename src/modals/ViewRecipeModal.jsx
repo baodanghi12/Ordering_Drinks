@@ -117,7 +117,7 @@ const ViewRecipeModal = ({ open, onCancel, recipe, inventory }) => {
           );
         })
       ) : (
-        <div>Không có nguyên liệu trong công thức này.</div>
+        <div>Chưa có nguyên liệu trong công thức này.</div>
       )}
 
       <div style={{ marginTop: 12, fontWeight: "bold" }}>

@@ -10,7 +10,7 @@ import {
   Typography,
 } from "antd";
 import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";
-import ImageUpload from "./ImageUpload";
+import ImageUpload from "../components/ImageUpload";
 
 const { Option } = Select;
 const { Text } = Typography;

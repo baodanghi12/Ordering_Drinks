@@ -2,8 +2,8 @@ import React, { useState, useEffect } from "react";
 import { Card, Button, message } from "antd";
 import axios from "axios";
 import ProductTable from "../components/ProductTable";
-import AddProductModal from "../components/AddProductModal";
-import EditProductModal from "../components/EditProductModal";
+import AddProductModal from "../modals/AddProductModal";
+import EditProductModal from "../modals/EditProductModal";
 
 const ProductManagement = () => {
   const [products, setProducts] = useState([]);
