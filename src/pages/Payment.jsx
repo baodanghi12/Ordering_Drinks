@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Card, InputNumber, Button, Radio } from "antd";
 import { useLocation, useNavigate } from "react-router-dom";
-
+import axios from "axios"; // nhớ import
 const Payment = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -13,26 +13,56 @@ const Payment = () => {
 
   const [method, setMethod] = useState(null); // ✅ chọn phương thức thanh toán
   const [customerPay, setCustomerPay] = useState(0);
-
+  const calculateTotalCost = (cart) => {
+  return cart.reduce((sum, item) => {
+    // Nếu sản phẩm có size thì lấy cost của size đó
+    const sizeCost = item.size?.cost || 0;
+    const quantity = item.quantity || 1;
+    return sum + sizeCost * quantity;
+  }, 0);
+};
   // ✅ Ảnh QR cố định từ Cloudinary (đã upload sẵn)
   const qrImage =
     "https://res.cloudinary.com/drzyhqg1q/image/upload/v1759862613/n35pepabrqglambdjzcu.jpg";
 
   const change = Math.max(customerPay - totalAmount, 0);
 
-  const handleConfirmPayment = () => {
-    // ✅ Xóa dữ liệu giỏ hàng sau khi thanh toán
+  const handleConfirmPayment = async () => {
+  try {
+    const totalCost = calculateTotalCost(cart);
+    const orderData = {
+      products: cart.map((item) => ({
+        productId: item._id,
+        name: item.name,
+        size: item.selectedSize?.name?.toUpperCase(),
+        price: item.size?.price || item.price,
+        cost: item.size?.cost || 0,
+        quantity: item.quantity || 1,
+      })),
+      totalAmount,
+      totalCost, // ✅ lưu tổng cost
+      profit: totalAmount - totalCost, // ✅ lợi nhuận
+      method, // "cash" hoặc "transfer"
+      createdAt: new Date(),
+    };
+
+    // Gửi order lên backend
+    // await axios.post("http://localhost:5000/api/orders", orderData);
+
+    // Xóa giỏ hàng
     localStorage.removeItem("cartData");
     localStorage.removeItem("cartTotal");
+
     // Hiển thị animation thành công
-  setShowSuccess(true);
-    // tuỳ chọn: bạn có thể lưu log hoặc gửi API xác nhận tại đây
-     // Sau 2 giây (hoặc thời gian animation), quay về trang Order
-  setTimeout(() => {
-    setShowSuccess(false);  
-    navigate("/order", { replace: true });
-  }, 2000); // 2 giây  
-  };
+    setShowSuccess(true);
+    setTimeout(() => {
+      setShowSuccess(false);
+      navigate("/order", { replace: true });
+    }, 2000);
+  } catch (error) {
+    console.error("❌ Lỗi khi lưu order:", error);
+  }
+};
 
   return (
     <div

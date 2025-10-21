@@ -2,10 +2,24 @@
 #root {
   max-width: 1280px;
   margin: 0 auto;
-  padding: 1rem;
+  padding: 0;
   text-align: center;
   box-sizing: border-box;
   width: 100%;
+}
+/* ✅ Reset mặc định để không còn margin trắng ở đầu trang */
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background-color: #f8f7ee; /* dùng màu nền của app */
+  box-sizing: border-box;
+}
+body {
+  -webkit-margin-before: 0 !important;
+  -webkit-margin-after: 0 !important;
+  margin-block-start: 0 !important;
+  margin-block-end: 0 !important;
 }
 
 /* Logo */
@@ -66,7 +80,7 @@
 /* 📱 Responsive cho mobile & tablet */
 @media (max-width: 768px) {
   #root {
-    padding: 1rem 0.5rem;
+    padding: 1 rem;
   }
 
   .logo {
@@ -88,7 +102,7 @@
 /* 🧭 Responsive cho màn hình nhỏ hơn 480px */
 @media (max-width: 480px) {
   #root {
-    padding: 0.5rem;
+    padding: 0;
   }
 
   .logo {

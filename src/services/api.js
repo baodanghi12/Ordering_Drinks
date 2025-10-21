@@ -1,4 +1,5 @@
 import axios from "axios";
+import { message } from "antd";
 
 // 🔗 URL của backend server
 const API_URL = "http://localhost:5000/api";
@@ -46,12 +47,14 @@ export const createProduct = async (payload) => {
   });
   return res.data;
 };
+
 export const updateProduct = async (id, payload) => {
   const res = await axios.put(`${API_URL}/products/${id}`, payload, {
     headers: { "Content-Type": "application/json" },
   });
   return res.data;
 };
+
 // =========================
 // 📦 INVENTORY (Nguyên vật liệu)
 // =========================
@@ -68,12 +71,97 @@ export const importInventory = async (payload) => {
   return res.data;
 };
 
-// Xem lịch sử nhập hàng
-export const fetchImportHistory = async () => {
-  const res = await axios.get(`${API_URL}/inventory/history`);
+// ✅ Sửa: Chỉ lấy phiếu nhập có mã IMP-
+export const fetchImportHistory = async (query = "") => {
+  const res = await axios.get(`${API_URL}/inventory/import-history${query}`);
   return res.data;
 };
 
+
+// 🆕 Xem lịch sử xuất hàng
+export const fetchExportHistory = async (query = "") => {
+  const res = await axios.get(`${API_URL}/inventory/export-history${query}`);
+  return res.data;
+};
+
+// =========================
+// 📦 SERVICES LẤY DỮ LIỆU
+// =========================
+export const loadInventory = async () => {
+  try {
+    const res = await fetchInventory();
+    return res || [];
+  } catch (err) {
+    console.error(err);
+    message.error("Lỗi khi tải dữ liệu kho");
+    return [];
+  }
+};
+
+export const loadImportHistory = async (start, end) => {
+  try {
+    let query = "";
+    if (start && end) query = `?start=${start}&end=${end}`;
+    const res = await fetchImportHistory(query);
+    return res || [];
+  } catch (err) {
+    console.error(err);
+    message.error("Lỗi khi tải lịch sử nhập kho");
+    return [];
+  }
+};
+
+// 🆕 Thêm mới: Lịch sử xuất kho
+export const loadExportHistory = async (start, end) => {
+  try {
+    let query = "";
+    if (start && end) query = `?start=${start}&end=${end}`;
+    const res = await fetchExportHistory(query);
+    return res || [];
+  } catch (err) {
+    console.error(err);
+    message.error("Lỗi khi tải lịch sử xuất kho");
+    return [];
+  }
+};
+
+// Nhập thêm kho
+export const addInventoryStock = async (values) => {
+  try {
+    await importInventory({
+      items: [
+        {
+          name: values.name,
+          quantity: values.stock,
+          unitCost: values.cost_per_unit,
+          unitWeight: values.unitWeight,
+          note: values.note,
+          unit: values.unit,
+          usageUnit: values.usageUnit,
+          deductType: values.deductType || "byUsage",
+        },
+      ],
+    });
+    message.success("Nhập kho thành công");
+  } catch (err) {
+    console.error(err);
+    message.error("Lỗi khi nhập kho");
+  }
+};
+// =========================
+// 📦 EXPORT INVENTORY (Xuất kho)
+// =========================
+export const exportInventory = async (payload) => {
+  try {
+    const res = await axios.post(`${API_URL}/inventory/export`, payload, {
+      headers: { "Content-Type": "application/json" },
+    });
+    return res.data;
+  } catch (error) {
+    console.error("Export inventory error:", error);
+    throw error;
+  }
+};
 // =========================
 // 🧾 ORDERS (Đơn hàng)
 // =========================

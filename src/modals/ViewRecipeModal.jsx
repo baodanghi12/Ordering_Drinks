@@ -6,16 +6,28 @@ const { Option } = Select;
 const ViewRecipeModal = ({ open, onCancel, recipe, inventory }) => {
   const [ingredients, setIngredients] = useState([]);
 
-  useEffect(() => {
-    if (!recipe) return;
-    setIngredients(
-      (recipe.recipe || []).map((r) => ({
-        ingredientId: r.ingredientId?._id || r.ingredientId,
-        amount: r.qty || 0,
-        unit: r.unit || r.ingredientId?.unit || "",
-      }))
-    );
-  }, [recipe, inventory]);
+useEffect(() => {
+  if (!recipe) return;
+
+  // Lấy recipe theo size nếu có
+  const recipeData =
+    recipe.sizeId && recipe.sizes
+      ? recipe.sizes.find((s) => s._id === recipe.sizeId)?.recipe || []
+      : recipe.recipe || [];
+
+  setIngredients(
+    recipeData.map((r) => ({
+      ingredientId: r.ingredientId?._id || r.ingredientId,
+      amount: r.qty || 0,
+      unit:
+        r.unit ||
+        inventory.find((i) => i._id === (r.ingredientId?._id || r.ingredientId))
+          ?.unit ||
+        "",
+    }))
+  );
+}, [recipe, inventory]);
+
 
   const totalCost = ingredients.reduce((total, ing) => {
     const item = inventory.find((i) => i._id === ing.ingredientId);
@@ -52,79 +64,83 @@ const ViewRecipeModal = ({ open, onCancel, recipe, inventory }) => {
     return total + amount * costPerUnit;
   }, 0);
 
-  return (
-    <Modal
-  title={recipe ? (
-    <span>
-      Công thức: <strong>{recipe.name}</strong>
-      {recipe.size?.name && (
-       <span style={{ marginLeft: 8, color: "#201f1fff", fontWeight: 500 }}>
-  ({recipe.size.name})
-</span>
-      )}
-    </span>
-  ) : (
-    "Xem công thức"
-  )}
-  open={open}              // ✅ đổi visible -> open
-  onCancel={onCancel}      // ✅ đổi onClose -> onCancel
-  width={700}
-  footer={
-    <div style={{ textAlign: "right" }}>
-      <Button onClick={onCancel} type="primary">
-        Đóng
-      </Button>
-    </div>
-  }
->
-
-      {ingredients.length > 0 ? (
-        ingredients.map((ing, idx) => {
-          const ingredientObj = inventory.find((i) => i._id === ing.ingredientId);
-          const displayUnit = ingredientObj?.unit || ing.unit || "";
-
-          return (
-            <div
-              key={idx}
-              style={{
-                display: "flex",
-                gap: 8,
-                alignItems: "center",
-                marginBottom: 12,
-              }}
-            >
-              <Select
-                style={{ flex: 2 }}
-                value={ing.ingredientId}
-                disabled
-              >
-                {inventory.map((item) => (
-                  <Option key={item._id} value={item._id}>
-                    {item.name}
-                  </Option>
-                ))}
-              </Select>
-
-              <InputNumber
-                style={{ flex: 1 }}
-                min={0}
-                step={0.01}
-                value={ing.amount}
-                disabled
-              />
-              <span style={{ flex: 1 }}>{displayUnit}</span>
-            </div>
-          );
-        })
+return (
+  <Modal
+    title={
+      recipe ? (
+        <span>
+          Công thức: <strong>{recipe.name}</strong>
+          {recipe.sizeId && recipe.sizes && (
+            <span style={{ marginLeft: 8, color: "#201f1fff", fontWeight: 500 }}>
+              (
+              {recipe.sizes.find((s) => s._id === recipe.sizeId)?.name || "Không xác định"}
+              )
+            </span>
+          )}
+        </span>
       ) : (
-        <div>Chưa có nguyên liệu trong công thức này.</div>
-      )}
-
-      <div style={{ marginTop: 12, fontWeight: "bold" }}>
-        Tổng cost: {totalCost.toLocaleString()}₫
+        "Xem công thức"
+      )
+    }
+    open={open}
+    onCancel={onCancel}
+    width={700}
+    footer={
+      <div style={{ textAlign: "right" }}>
+        <Button onClick={onCancel} type="primary">
+          Đóng
+        </Button>
       </div>
-    </Modal>
-  );
+    }
+  >
+    {ingredients.length > 0 ? (
+      ingredients.map((ing, idx) => {
+        const ingredientObj = inventory.find((i) => i._id === ing.ingredientId);
+        const displayUnit = ingredientObj?.unit || ing.unit || "";
+
+        return (
+          <div
+            key={idx}
+            style={{
+              display: "flex",
+              gap: 8,
+              alignItems: "center",
+              marginBottom: 12,
+            }}
+          >
+            <Select
+              style={{ flex: 2 }}
+              value={ing.ingredientId}
+              disabled
+            >
+              {inventory.map((item) => (
+                <Option key={item._id} value={item._id}>
+                  {item.name}
+                </Option>
+              ))}
+            </Select>
+
+            <InputNumber
+              style={{ flex: 1 }}
+              min={0}
+              step={0.01}
+              value={ing.amount}
+              disabled
+            />
+            <span style={{ flex: 1 }}>{displayUnit}</span>
+          </div>
+        );
+      })
+    ) : (
+      <div>Chưa có nguyên liệu trong công thức này.</div>
+    )}
+
+    <div style={{ marginTop: 12, fontWeight: "bold" }}>
+      Tổng cost: {totalCost.toLocaleString()}₫
+    </div>
+  </Modal>
+);
+
 };
 
 export default ViewRecipeModal;

@@ -8,6 +8,7 @@ import {
   Space,
   InputNumber,
   message,
+  AutoComplete
 } from "antd";
 import ImageUpload from "../components/ImageUpload";
 import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";
@@ -90,33 +91,19 @@ const handleSave = () => {
       />
 
       {/* Danh mục — cho phép gõ tay */}
-      <Select
-        showSearch
-        placeholder="Chọn hoặc nhập danh mục"
-        value={newProduct.category}
-        onChange={handleCategoryChange}
-        style={{ width: "100%", marginBottom: 12 }}
-        allowClear
-        // ✅ Cho phép nhập tay
-        dropdownRender={(menu) => (
-          <>
-            {menu}
-            <div style={{ padding: 8 }}>
-              <Input
-                placeholder="Nhập danh mục mới"
-                value={newProduct.category}
-                onChange={(e) => handleCategoryChange(e.target.value)}
-              />
-            </div>
-          </>
-        )}
-      >
-        {(categories || []).map((cat) => (
-          <Option key={cat._id || cat} value={cat.name || cat}>
-            {cat.name || cat}
-          </Option>
-        ))}
-      </Select>
+      <AutoComplete
+  style={{ width: "100%", marginBottom: 12 }}
+  options={(categories || []).map((c) => ({ value: c }))}
+  value={newProduct.category}
+  onChange={(val) => setNewProduct({ ...newProduct, category: val })}
+  onSelect={(val) => setNewProduct({ ...newProduct, category: val })}
+  placeholder="Chọn hoặc nhập danh mục (gõ rồi nhấn Enter)"
+  allowClear
+  filterOption={(inputValue, option) =>
+    option.value.toLowerCase().includes(inputValue.toLowerCase())
+  }
+/>
+
 
       {/* Danh sách size */}
       <Card

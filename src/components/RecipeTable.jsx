@@ -3,6 +3,7 @@ import { Table, Button } from "antd";
 import { EditOutlined } from "@ant-design/icons";
 
 const RecipeTable = ({ products, inventory, onEdit, onView }) => {
+  // ✅ Gom sản phẩm theo size để hiển thị rõ ràng
   const productsForTable = products.flatMap((p) => {
     if (Array.isArray(p.sizes) && p.sizes.length > 0) {
       return p.sizes.map((size) => ({
@@ -13,7 +14,6 @@ const RecipeTable = ({ products, inventory, onEdit, onView }) => {
         size,
       }));
     }
-
     return [
       {
         ...p,
@@ -25,63 +25,45 @@ const RecipeTable = ({ products, inventory, onEdit, onView }) => {
     ];
   });
 
-  // ✅ Hàm tính cost giống EditRecipeModal + log để debug
+  // ✅ Hàm tính tổng cost (chuẩn theo usageUnit và unitWeight)
   const calcCost = (recipe = [], recordName = "") => {
-    const total = recipe.reduce((total, ing) => {
+    return recipe.reduce((total, ing) => {
       const ingId =
         ing.ingredientId?._id?.toString() || ing.ingredientId?.toString();
       const item = inventory?.find((i) => i._id?.toString() === ingId);
-
-      if (!item) {
-        console.warn(
-          `⚠️ Ingredient not found in inventory:`,
-          ing.ingredientId,
-          " | recipe item:",
-          ing
-        );
-        return total;
-      }
+      if (!item) return total;
 
       let amount = ing.qty || ing.amount || 0;
       let costPerUnit = item.cost_per_unit || 0;
 
-      // Quy đổi đơn vị giống EditRecipeModal
-      switch (item.unit) {
-        case "g":
-          if (item.unitWeight && item.unitWeight !== 0) {
-            costPerUnit = costPerUnit / item.unitWeight;
-          }
-          if (ing.unit === "kg") amount *= 1000;
-          break;
+      // ✅ Lấy usageUnit từ inventory
+      const invUnit = item.usageUnit || "pcs";
 
-        case "kg":
-          if (ing.unit === "gr") amount /= 1000;
+      // ✅ Quy đổi chi phí theo usageUnit và unitWeight
+      switch (invUnit) {
+        case "gram":
+          // nếu tồn kho dạng bịch, mỗi bịch có unitWeight gram
+          if (item.unitWeight > 0)
+            costPerUnit = item.cost_per_unit / item.unitWeight;
           break;
 
         case "ml":
-          if (item.unitWeight && item.unitWeight !== 0) {
-            costPerUnit = costPerUnit / item.unitWeight;
-          }
-          if (ing.unit === "l") amount *= 1000;
+          // nếu tồn kho dạng hộp/chai, mỗi hộp có unitWeight ml
+          if (item.unitWeight > 0)
+            costPerUnit = item.cost_per_unit / item.unitWeight;
           break;
 
-        case "l":
-          if (ing.unit === "ml") amount /= 1000;
-          break;
-
-        case "pcs":
-          if (item.unitWeight && ing.unit !== "pcs") {
-            amount = amount / item.unitWeight;
-          }
+        case "cái":
+          // không quy đổi, vì đếm từng cái
           break;
 
         default:
           break;
       }
+
       const lineCost = amount * costPerUnit;
       return total + lineCost;
     }, 0);
-    return total;
   };
 
   const columns = [
@@ -112,7 +94,6 @@ const RecipeTable = ({ products, inventory, onEdit, onView }) => {
       render: (_, record) => {
         const recipe = record.size?.recipe || record.recipe || [];
         const totalCost = calcCost(recipe, record.name);
-
         return (
           <span style={{ fontWeight: 500 }}>
             {totalCost ? totalCost.toLocaleString() + "₫" : "0₫"}
