@@ -75,7 +75,7 @@ const Recipes = () => {
   };
 
   // 🔹 Lưu công thức (PUT API)
-  const handleSaveRecipe = async (updatedIngredients) => {
+  const handleSaveRecipe = async (updatedIngredients, sizeNote) => {
     try {
       const payload = {
         sizeId: selectedSizeId,
@@ -86,8 +86,8 @@ const Recipes = () => {
             qty: ing.amount, // ✅ lưu đúng trường backend đọc
             unit: ing.unit, // ✅ lưu lại usageUnit để dùng khi hiển thị
           })),
+          sizeNote, // ✅ thêm dòng này để backend nhận note
       };
-      console.log("Payload gửi lên:", payload);
       await axios.put(
         `http://localhost:5000/api/products/${selectedProduct._id}`,
         payload

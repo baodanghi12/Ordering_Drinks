@@ -176,3 +176,14 @@ export const fetchOrders = async () => {
   const res = await axios.get(`${API_URL}/orders`);
   return res.data;
 };
+
+// 🆕 Cập nhật trạng thái đơn hàng
+export const updateOrderStatus = async (orderId, status) => {
+  const res = await axios.put(`${API_URL}/orders/${orderId}/status`, { status });
+  return res.data;
+};
+// 🆕 Cập nhật paymentMethod
+export const updateOrderPayment = async (orderId, paymentMethod) => {
+  const res = await axios.put(`${API_URL}/orders/${orderId}/payment`, { paymentMethod });
+  return res.data;
+};

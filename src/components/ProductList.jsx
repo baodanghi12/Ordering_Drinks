@@ -6,19 +6,13 @@ const ProductList = ({ products, onAddClick }) => {
   const getPrice = (product) => {
     if (!product.sizes || product.sizes.length === 0) return product.price || 0;
 
-    const sizeM = product.sizes.find((s) => s.size === "M");
+    const sizeM = product.sizes.find((s) => s.name === "M");
     return sizeM ? sizeM.price : product.sizes[0].price;
   };
 
   return (
     <div style={{ display: "block", width: "100%" }}>
-      {products
-  .filter(
-    (p) =>
-      (p.recipe && p.recipe.length > 0) || // có công thức chung
-      (p.sizes && p.sizes.some((s) => s.recipe && s.recipe.length > 0)) // hoặc có công thức ở size
-  )
-  .map((product) => (
+      {products.map((product) => (
         <div
           key={product._id}
           style={{

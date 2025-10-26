@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Modal, Select, InputNumber, Button, message } from "antd";
+import { Modal, Select, InputNumber, Button, message, Input } from "antd";
 
 const { Option } = Select;
 
@@ -12,7 +12,7 @@ const EditRecipeModal = ({
 }) => {
   const [ingredients, setIngredients] = useState([]);
   const [errorIndex, setErrorIndex] = useState(null);
-
+  const [sizeNote, setSizeNote] = useState("");
   useEffect(() => {
     if (!visible || !selectedProduct) return;
 
@@ -20,8 +20,10 @@ const EditRecipeModal = ({
     if (selectedProduct.sizeId && selectedProduct.sizes?.length) {
       const size = selectedProduct.sizes.find((s) => s._id === selectedProduct.sizeId);
       recipeData = size?.recipe || [];
+      setSizeNote(size?.note || ""); // ✅ load note của size
     } else {
       recipeData = selectedProduct.recipe || [];
+       setSizeNote("");
     }
 
     const newIngredients = recipeData.map((r) => ({
@@ -76,7 +78,8 @@ const EditRecipeModal = ({
       return;
     }
 
-    onSaveRecipe(ingredients);
+    // ✅ Gửi kèm note của size
+   onSaveRecipe(ingredients, sizeNote);
     onClose();
   };
 
@@ -188,10 +191,19 @@ const EditRecipeModal = ({
         );
       })}
 
+
       <Button type="dashed" block onClick={handleAddIngredient}>
         + Thêm nguyên liệu
       </Button>
-
+      <div style={{ marginTop: "1rem", marginBottom: "1rem" }}>
+  <label style={{ fontWeight: 500 }}>Ghi chú cho size này:</label>
+  <Input.TextArea
+    rows={3}
+    placeholder="Nhập ghi chú hướng dẫn pha chế cho size này..."
+    value={sizeNote}
+    onChange={(e) => setSizeNote(e.target.value)}
+  />
+</div>
       <div style={{ marginTop: 12, fontWeight: "bold" }}>
         Tổng cost: {totalCost.toLocaleString()}₫
       </div>

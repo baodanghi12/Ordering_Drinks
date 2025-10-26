@@ -1,68 +1,61 @@
 import React, { useState } from "react";
 import { Card, InputNumber, Button, Radio } from "antd";
 import { useLocation, useNavigate } from "react-router-dom";
-import axios from "axios"; // nhớ import
+import axios from "axios";
+import { updateOrderPayment, updateOrderStatus } from "../services/api";
 const Payment = () => {
   const navigate = useNavigate();
   const location = useLocation();
+
   const [showSuccess, setShowSuccess] = useState(false);
-// ✅ Lấy dữ liệu từ location hoặc localStorage (nếu reload hoặc quay lại)
+  const [method, setMethod] = useState(null);
+  const [customerPay, setCustomerPay] = useState(0);
+
+  // ✅ Lấy dữ liệu từ location.state hoặc localStorage
   const savedCart = JSON.parse(localStorage.getItem("cartData") || "[]");
   const savedTotal = Number(localStorage.getItem("cartTotal") || 0);
-  const { totalAmount = 0, cart = [] } = location.state || {};
 
-  const [method, setMethod] = useState(null); // ✅ chọn phương thức thanh toán
-  const [customerPay, setCustomerPay] = useState(0);
+  const { totalAmount = savedTotal, cart = savedCart } = location.state || {};
+  const orderId = location.state?.orderId || localStorage.getItem("currentOrderId");
+
   const calculateTotalCost = (cart) => {
-  return cart.reduce((sum, item) => {
-    // Nếu sản phẩm có size thì lấy cost của size đó
-    const sizeCost = item.size?.cost || 0;
-    const quantity = item.quantity || 1;
-    return sum + sizeCost * quantity;
-  }, 0);
-};
-  // ✅ Ảnh QR cố định từ Cloudinary (đã upload sẵn)
+    return cart.reduce((sum, item) => {
+      const sizeCost = item.size?.cost || 0;
+      const quantity = item.quantity || 1;
+      return sum + sizeCost * quantity;
+    }, 0);
+  };
+
   const qrImage =
     "https://res.cloudinary.com/drzyhqg1q/image/upload/v1759862613/n35pepabrqglambdjzcu.jpg";
 
   const change = Math.max(customerPay - totalAmount, 0);
 
   const handleConfirmPayment = async () => {
+  if (!orderId) {
+    alert("Không tìm thấy đơn hàng. Vui lòng tạo đơn hàng trước khi thanh toán!");
+    return;
+  }
+
   try {
-    const totalCost = calculateTotalCost(cart);
-    const orderData = {
-      products: cart.map((item) => ({
-        productId: item._id,
-        name: item.name,
-        size: item.selectedSize?.name?.toUpperCase(),
-        price: item.size?.price || item.price,
-        cost: item.size?.cost || 0,
-        quantity: item.quantity || 1,
-      })),
-      totalAmount,
-      totalCost, // ✅ lưu tổng cost
-      profit: totalAmount - totalCost, // ✅ lợi nhuận
-      method, // "cash" hoặc "transfer"
-      createdAt: new Date(),
-    };
+    // 🔹 Dùng hàm api.js thay vì axios trực tiếp
+    await updateOrderPayment(orderId, method);
+await updateOrderStatus(orderId, "paid");
 
-    // Gửi order lên backend
-    // await axios.post("http://localhost:5000/api/orders", orderData);
-
-    // Xóa giỏ hàng
     localStorage.removeItem("cartData");
     localStorage.removeItem("cartTotal");
+    localStorage.removeItem("currentOrderId");
 
-    // Hiển thị animation thành công
     setShowSuccess(true);
     setTimeout(() => {
       setShowSuccess(false);
       navigate("/order", { replace: true });
     }, 2000);
   } catch (error) {
-    console.error("❌ Lỗi khi lưu order:", error);
+    console.error("❌ Lỗi khi cập nhật order:", error);
   }
 };
+
 
   return (
     <div
@@ -75,16 +68,14 @@ const Payment = () => {
         marginBottom: "90px",
       }}
     >
-      {/* 🔙 Nút quay lại */}
       <Button
         type="default"
-        onClick={() => navigate("/order")} // ✅ Quay lại đúng trang giỏ hàng
+        onClick={() => navigate("/order")}
         style={{ alignSelf: "flex-start", borderRadius: 8, marginBottom: "0.5rem" }}
       >
         ← Quay lại
       </Button>
 
-      {/* 🔘 Chọn phương thức thanh toán */}
       <Card
         title="Chọn phương thức thanh toán"
         style={{
@@ -97,18 +88,13 @@ const Payment = () => {
         <Radio.Group
           onChange={(e) => setMethod(e.target.value)}
           value={method}
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "0.5rem",
-          }}
+          style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}
         >
           <Radio value="cash">💵 Thanh toán bằng tiền mặt</Radio>
           <Radio value="transfer">🏦 Thanh toán bằng chuyển khoản (QR)</Radio>
         </Radio.Group>
       </Card>
 
-      {/* 🏦 Nội dung thanh toán bằng chuyển khoản */}
       {method === "transfer" && (
         <Card
           title="Thanh toán qua mã QR"
@@ -138,14 +124,37 @@ const Payment = () => {
             Vui lòng ghi rõ nội dung chuyển khoản.
           </p>
 
-          {/* Nút xác nhận thanh toán thủ công */}
-          <Button type="primary" block onClick={handleConfirmPayment}>
+          <div style={{ marginBottom: "1rem", textAlign: "left" }}>
+            <p>
+              <strong>Số tiền sẽ chuyển:</strong>
+            </p>
+            <InputNumber
+              style={{ width: "100%" }}
+              min={0}
+              placeholder="Nhập số tiền chuyển khoản"
+              value={customerPay}
+              onChange={(value) => setCustomerPay(value)}
+            />
+          </div>
+
+          <div style={{ marginBottom: "1rem", textAlign: "left" }}>
+            <p>
+              <strong>Chênh lệch so với tổng tiền:</strong>{" "}
+              {change.toLocaleString("vi-VN")} ₫
+            </p>
+          </div>
+
+          <Button
+            type="primary"
+            block
+            onClick={handleConfirmPayment}
+            disabled={!method || customerPay < totalAmount}
+          >
             ✅ Xác nhận đã thanh toán
           </Button>
         </Card>
       )}
 
-      {/* 💵 Nội dung thanh toán tiền mặt */}
       {method === "cash" && (
         <Card
           title="Thanh toán bằng tiền mặt"
@@ -158,8 +167,7 @@ const Payment = () => {
         >
           <div style={{ marginBottom: "1rem" }}>
             <p>
-              <strong>Tổng tiền:</strong>{" "}
-              {totalAmount.toLocaleString("vi-VN")} ₫
+              <strong>Tổng tiền:</strong> {totalAmount.toLocaleString("vi-VN")} ₫
             </p>
           </div>
 
@@ -178,8 +186,7 @@ const Payment = () => {
 
           <div style={{ marginBottom: "1rem" }}>
             <p>
-              <strong>Tiền thừa:</strong>{" "}
-              {change.toLocaleString("vi-VN")} ₫
+              <strong>Tiền thừa:</strong> {change.toLocaleString("vi-VN")} ₫
             </p>
           </div>
 
@@ -193,38 +200,38 @@ const Payment = () => {
           </Button>
         </Card>
       )}
-       {/* 🔔 Animation hiển thị khi xác nhận thành công */}
-    {showSuccess && (
-      <div
-        style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          width: "100%",
-          height: "100%",
-          backgroundColor: "rgba(255,255,255,0.9)",
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "center",
-          alignItems: "center",
-          zIndex: 2000,
-          fontSize: "1.2rem",
-          color: "#52c41a",
-          animation: "fadeInOut 2s forwards",
-        }}
-      >
+
+      {showSuccess && (
         <div
           style={{
-            fontSize: "2rem",
-            marginBottom: "1rem",
-            animation: "bounce 1s infinite",
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            backgroundColor: "rgba(255,255,255,0.9)",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 2000,
+            fontSize: "1.2rem",
+            color: "#52c41a",
+            animation: "fadeInOut 2s forwards",
           }}
         >
-          ✅
+          <div
+            style={{
+              fontSize: "2rem",
+              marginBottom: "1rem",
+              animation: "bounce 1s infinite",
+            }}
+          >
+            ✅
+          </div>
+          <div>Đơn hàng đã được tạo thành công!</div>
         </div>
-        <div>Đơn hàng đã được tạo thành công!</div>
-      </div>
-    )}
+      )}
     </div>
   );
 };

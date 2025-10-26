@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Input, Button, message } from "antd";
-import { fetchProducts, createOrder, exportInventory } from "../services/api";
+import { fetchProducts, createOrder, exportInventory, loadInventory } from "../services/api";
 import { useNavigate } from "react-router-dom";
 import ProductList from "../components/ProductList";
 import CartSection from "../components/CartSection";
@@ -15,7 +15,7 @@ const Order = () => {
   const [categories, setCategories] = useState(["Tất cả"]);
   const [selectedCategory, setSelectedCategory] = useState("Tất cả");
   const [searchValue, setSearchValue] = useState("");
-
+  const [inventory, setInventory] = useState([]);
   const [cart, setCart] = useState(() =>
     JSON.parse(localStorage.getItem("cartData") || "[]")
   );
@@ -30,19 +30,84 @@ const Order = () => {
   const [editIndex, setEditIndex] = useState(null);
 
   useEffect(() => {
-    (async () => {
-      const data = await fetchProducts();
-      setProducts(data || []);
-      const cats = Array.from(new Set(["Tất cả", ...(data.map((p) => p.category || "Khác"))]));
-      setCategories(cats);
-    })();
-  }, []);
+  (async () => {
+    const productsData = await fetchProducts();
+    setProducts(productsData || []);
 
-  const filteredProducts = products.filter(
-    (p) =>
-      (selectedCategory === "Tất cả" || p.category === selectedCategory) &&
-      p.name.toLowerCase().includes(searchValue.toLowerCase())
-  );
+    const inventoryData = await loadInventory();
+    setInventory(inventoryData || []);
+
+    const cats = Array.from(new Set(["Tất cả", ...(productsData.map(p => p.category || "Khác"))]));
+    setCategories(cats);
+
+    // 🔹 LOG debug
+    console.log("Products fetched:", productsData);
+    console.log("Inventory fetched:", inventoryData);
+  })();
+}, []);
+
+const hasEnoughIngredients = (product, inventory) => {
+  if (!inventory || inventory.length === 0) return false;
+
+  // Map: id nguyên liệu => stock đã quy đổi về usageUnit
+  const invMap = new Map();
+  inventory.forEach(i => {
+    let available = i.stock;
+    // Nếu unit khác usageUnit thì quy đổi
+    if (i.unit !== i.usageUnit && i.unitWeight) {
+      available = i.stock * i.unitWeight;
+    }
+    invMap.set(i._id.toString(), available);
+  });
+
+  const recipes = [];
+
+  // Product-level recipe
+  if (Array.isArray(product.recipe) && product.recipe.length > 0) {
+    recipes.push(product.recipe);
+  }
+
+  // Size-level recipe
+  if (Array.isArray(product.sizes)) {
+    product.sizes.forEach(s => {
+      if (Array.isArray(s.recipe) && s.recipe.length > 0) {
+        recipes.push(s.recipe);
+      }
+    });
+  }
+
+  console.log("Checking product:", product.name);
+  console.log("Recipes to check:", recipes);
+
+  return recipes.some(recipeList => {
+    const result = recipeList.every(item => {
+      const available = invMap.get(item.ingredientId._id.toString()) || 0;
+      const enough = available >= item.qty;
+
+      console.log(
+        `Ingredient ${item.ingredientId._id}: required=${item.qty}, available=${available}, enough=${enough}`
+      );
+
+      return enough;
+    });
+    console.log("Recipe sufficient?", result);
+    return result;
+  });
+};
+
+
+
+
+const filteredProducts = products.filter(
+  p =>
+    (selectedCategory === "Tất cả" || p.category === selectedCategory) &&
+    p.name.toLowerCase().includes(searchValue.toLowerCase()) &&
+    hasEnoughIngredients(p, inventory) // ✅ nhớ truyền inventory
+);
+
+// 🔹 LOG kết quả cuối cùng
+console.log("Filtered products:", filteredProducts.map(p => p.name));
+
 
   const updateCart = (newCart) => {
     setCart(newCart);
@@ -50,33 +115,81 @@ const Order = () => {
   };
 
 const handlePlaceOrder = async () => {
+  console.log("🟢 handlePlaceOrder được gọi");
   if (cart.length === 0) return message.warning("Giỏ hàng trống");
 
-  // ✅ Tính tổng giá bán
-  const cartTotal = cart.reduce((sum, item) => {
-    const base = item.price * item.qty;
-    const extraTotal = item.extras
-      ? item.extras.reduce((a, e) => a + e.price * (e.qty || 1), 0) * item.qty
-      : 0;
-    return sum + base + extraTotal;
-  }, 0);
-
-  // ✅ Tính tổng cost
-  const cartCost = cart.reduce((sum, item) => {
-    const baseCost = (item.cost || 0) * (item.qty || 1);
-    const extraCost = item.extras
-      ? item.extras.reduce(
-          (a, e) => a + (e.cost || 0) * (e.qty || 1),
-          0
-        ) * (item.qty || 1)
-      : 0;
-
-    const container = item.isExtra ? (item.containerCost || 0) : 0;
-    return sum + baseCost + extraCost + container;
-  }, 0);
-
   try {
-    // 1. Tạo đơn hàng trước
+    console.log("🟢 Bắt đầu tạo đơn...");
+    const inventoryList = await loadInventory();
+
+    // Kiểm tra từng món trong giỏ có đủ NVL không
+    const insufficientItems = [];
+
+    for (let item of cart) {
+      const productInDb = await fetchProducts().then(res => res.find(p => p._id === item.productId));
+      if (!productInDb) continue;
+
+      const sizeData = productInDb.sizes?.find(s => s.name === item.size);
+      const recipe = sizeData?.recipe || productInDb.recipe || [];
+
+      for (let ing of recipe) {
+        const inv = inventoryList.find(i => i._id === ing.ingredientId._id || i._id === ing.ingredientId);
+        if (!inv) {
+          insufficientItems.push(`${item.name} (${item.size}) - Thiếu ${ing.ingredientId.name}`);
+          break;
+        }
+
+        // ✅ TÍNH TOÁN CHÍNH XÁC SỐ LƯỢNG CÓ SẴN
+        let availableStock = inv.stock;
+        
+        // Nếu unit khác usageUnit thì quy đổi
+        if (inv.unit !== inv.usageUnit && inv.unitWeight) {
+          availableStock = inv.stock * inv.unitWeight;
+        }
+
+        const requiredQty = ing.qty * item.qty;
+        
+        console.log(`🔍 Kiểm tra NVL: ${inv.name}`);
+        console.log(`   - Cần: ${requiredQty} ${ing.unit}`);
+        console.log(`   - Có: ${availableStock} ${inv.usageUnit}`);
+        console.log(`   - Đủ: ${availableStock >= requiredQty}`);
+
+        if (availableStock < requiredQty) {
+          insufficientItems.push(`${item.name} (${item.size}) - Thiếu ${inv.name}`);
+          break;
+        }
+      }
+    }
+
+    if (insufficientItems.length > 0) {
+      console.log("❌ Món thiếu NVL:", insufficientItems);
+      return message.error(
+        `Không đủ nguyên vật liệu: ${[...new Set(insufficientItems)].join(", ")}`
+      );
+    }
+
+    // ... phần còn lại của code (tính tiền, tạo order, export inventory)
+    console.log("🟢 Đủ NVL, tiếp tục tạo đơn...");
+
+    // Tính tổng tiền và cost
+    const cartTotal = cart.reduce((sum, item) => {
+      const base = item.price * item.qty;
+      const extraTotal = item.extras
+        ? item.extras.reduce((a, e) => a + e.price * (e.qty || 1), 0) * item.qty
+        : 0;
+      return sum + base + extraTotal;
+    }, 0);
+
+    const cartCost = cart.reduce((sum, item) => {
+      const baseCost = (item.cost || 0) * (item.qty || 1);
+      const extraCost = item.extras
+        ? item.extras.reduce((a, e) => a + (e.cost || 0) * (e.qty || 1), 0) * (item.qty || 1)
+        : 0;
+      const container = item.isExtra ? (item.containerCost || 0) : 0;
+      return sum + baseCost + extraCost + container;
+    }, 0);
+
+    // Tạo payload order
     const payload = {
       items: cart.map((i) => ({
         productId: i.productId,
@@ -103,67 +216,60 @@ const handlePlaceOrder = async () => {
       paymentMethod: "cash",
     };
 
+    console.log("🟢 Gọi API createOrder...");
     const orderResult = await createOrder(payload);
-    console.log("✅ Order created:", orderResult);
+    console.log("🟢 Order created:", orderResult);
 
-    // 2. Chuẩn bị data xuất kho
-const exportItems = [];
+    localStorage.setItem("currentOrderId", orderResult._id);
 
-// Lấy tất cả products để có recipe
-const allProducts = await fetchProducts();
-console.log("📦 All products loaded:", allProducts.length);
+    // Xuất kho NVL - CŨNG CẦN SỬA QUY ĐỔI Ở ĐÂY
+    const exportItems = [];
+    const allProducts = await fetchProducts();
 
-cart.forEach(item => {
-  console.log("🔍 Processing cart item:", item.name, "productId:", item.productId);
-  
-  // Tìm product trong database để lấy recipe
-  const productInDb = allProducts.find(p => p._id === item.productId);
-  
-  if (productInDb && productInDb.sizes) {
-    const sizeData = productInDb.sizes.find(s => s.name === item.size);
-    console.log("🔍 Size data found:", sizeData);
-    
-    if (sizeData && sizeData.recipe) {
-      console.log("🔍 Recipe found:", sizeData.recipe);
-      // Nhân số lượng với qty của item
-      sizeData.recipe.forEach(ingredient => {
+    cart.forEach(item => {
+      const productInDb = allProducts.find(p => p._id === item.productId);
+      if (!productInDb) return;
+
+      const sizeData = productInDb.sizes?.find(s => s.name === item.size);
+      const recipe = sizeData?.recipe || productInDb.recipe || [];
+
+      recipe.forEach(ingredient => {
         exportItems.push({
-          ingredientId: ingredient.ingredientId,
+          ingredientId: ingredient.ingredientId._id || ingredient.ingredientId,
           qty: ingredient.qty * item.qty,
-          note: `Dùng cho ${item.name} (${item.size}) x${item.qty}`
+          note: `Dùng cho ${item.name} (${item.size}) x${item.qty}`,
         });
       });
-    } else {
-      console.log("❌ No recipe found for size:", item.size);
+    });
+
+    if (exportItems.length > 0) {
+      console.log("🟢 Xuất kho:", exportItems);
+      await exportInventory({ items: exportItems, note: `Xuất kho khi tạo đơn #${orderResult._id}` });
     }
-  } else {
-    console.log("❌ Product or sizes not found in DB");
-  }
-});
 
-console.log("📦 Export items prepared:", exportItems);
-
-// 3. Gọi export inventory nếu có nguyên liệu cần xuất
-if (exportItems.length > 0) {
-  const exportPayload = {
-    items: exportItems,
-    note: `Xuất kho khi tạo đơn hàng #${orderResult._id}`
-  };
-  
-  console.log("🚀 Calling exportInventory with:", exportPayload);
-  await exportInventory(exportPayload);
-  console.log("✅ Export inventory thành công");
-} else {
-  console.log("ℹ️ Không có nguyên liệu nào cần xuất kho");
-}
-
+    console.log("🟢 Tất cả thành công, chuyển trang payment...");
     message.success("Tạo đơn thành công!");
-    navigate("/payment", { state: { totalAmount: cartTotal, cart } });
+    
+    // Xóa giỏ hàng
+    localStorage.removeItem("cartData");
+    setCart([]);
+    
+    // Chuyển trang
+    navigate("/payment", { 
+      state: { 
+        totalAmount: cartTotal, 
+        cart, 
+        orderId: orderResult._id 
+      } 
+    });
+
   } catch (err) {
     console.error("❌ Lỗi tạo đơn:", err);
-    message.error("Lỗi tạo đơn");
+    message.error("Lỗi tạo đơn: " + err.message);
   }
 };
+
+
 
   return (
     <div style={{ padding: "1rem", marginBottom: "90px" }}>
