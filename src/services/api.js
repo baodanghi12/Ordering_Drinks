@@ -177,13 +177,37 @@ export const fetchOrders = async () => {
   return res.data;
 };
 
-// 🆕 Cập nhật trạng thái đơn hàng
+// ✅ Cập nhật trạng thái đơn hàng với log chi tiết
 export const updateOrderStatus = async (orderId, status) => {
-  const res = await axios.put(`${API_URL}/orders/${orderId}/status`, { status });
-  return res.data;
+  try {
+    console.log(`📞 [API] Gọi updateOrderStatus: ${orderId} -> ${status}`);
+    const response = await axios.put(`${API_URL}/orders/${orderId}/status`, {
+      status: status
+    });
+    console.log(`✅ [API] updateOrderStatus thành công: ${orderId} -> ${status}`);
+    return response.data;
+  } catch (error) {
+    console.error(`❌ [API] Lỗi updateOrderStatus: ${orderId} -> ${status}`, error);
+    throw error;
+  }
 };
 // 🆕 Cập nhật paymentMethod
 export const updateOrderPayment = async (orderId, paymentMethod) => {
   const res = await axios.put(`${API_URL}/orders/${orderId}/payment`, { paymentMethod });
   return res.data;
+};
+// ✅ Xuất kho từ đơn hàng với log chi tiết
+export const exportInventoryFromOrder = async (orderId, cartItems) => {
+  try {
+    console.log(`📞 [API] Gọi exportInventoryFromOrder: ${orderId}`);
+    const response = await axios.post(`${API_URL}/inventory/export-from-order`, {
+      orderId,
+      items: cartItems
+    });
+    console.log(`✅ [API] exportInventoryFromOrder thành công: ${orderId}`);
+    return response.data;
+  } catch (error) {
+    console.error(`❌ [API] Lỗi exportInventoryFromOrder: ${orderId}`, error);
+    throw error;
+  }
 };

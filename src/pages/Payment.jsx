@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Card, InputNumber, Button, Radio } from "antd";
 import { useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
-import { updateOrderPayment, updateOrderStatus } from "../services/api";
+import { updateOrderPayment, updateOrderStatus,  exportInventoryFromOrder } from "../services/api";
 const Payment = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -10,6 +10,7 @@ const Payment = () => {
   const [showSuccess, setShowSuccess] = useState(false);
   const [method, setMethod] = useState(null);
   const [customerPay, setCustomerPay] = useState(0);
+  const [loading, setLoading] = useState(false); // 🆕 Thêm trạng thái loading
 
   // ✅ Lấy dữ liệu từ location.state hoặc localStorage
   const savedCart = JSON.parse(localStorage.getItem("cartData") || "[]");
@@ -30,31 +31,60 @@ const Payment = () => {
     "https://res.cloudinary.com/drzyhqg1q/image/upload/v1759862613/n35pepabrqglambdjzcu.jpg";
 
   const change = Math.max(customerPay - totalAmount, 0);
+ // 🆕 HÀM XUẤT KHO KHI THANH TOÁN
+  const handleExportInventory = async () => {
+    try {
+      if (!orderId) {
+        console.error("❌ Không có orderId để xuất kho");
+        return;
+      }
 
-  const handleConfirmPayment = async () => {
-  if (!orderId) {
-    alert("Không tìm thấy đơn hàng. Vui lòng tạo đơn hàng trước khi thanh toán!");
-    return;
-  }
+      console.log("📦 Bắt đầu xuất kho cho đơn hàng:", orderId);
+      
+      // Gọi API xuất kho từ đơn hàng
+      const result = await exportInventoryFromOrder(orderId, cart);
+      
+      console.log("✅ Xuất kho thành công:", result);
+      return result;
+    } catch (error) {
+      console.error("❌ Lỗi khi xuất kho:", error);
+      throw error; // Ném lỗi để hàm gọi xử lý
+    }
+  };
 
-  try {
-    // 🔹 Dùng hàm api.js thay vì axios trực tiếp
-    await updateOrderPayment(orderId, method);
-await updateOrderStatus(orderId, "paid");
+   const handleConfirmPayment = async () => {
+    if (!orderId) {
+      alert("Không tìm thấy đơn hàng. Vui lòng tạo đơn hàng trước khi thanh toán!");
+      return;
+    }
 
-    localStorage.removeItem("cartData");
-    localStorage.removeItem("cartTotal");
-    localStorage.removeItem("currentOrderId");
+    setLoading(true); // 🆕 Bật loading
 
-    setShowSuccess(true);
-    setTimeout(() => {
-      setShowSuccess(false);
-      navigate("/order", { replace: true });
-    }, 2000);
-  } catch (error) {
-    console.error("❌ Lỗi khi cập nhật order:", error);
-  }
-};
+    try {
+      // 🆕 BƯỚC 1: XUẤT KHO TRƯỚC KHI CẬP NHẬT TRẠNG THÁI
+      await handleExportInventory();
+
+      // 🔹 BƯỚC 2: Cập nhật phương thức thanh toán và trạng thái
+      await updateOrderPayment(orderId, method);
+      await updateOrderStatus(orderId, "paid");
+
+      // 🔹 BƯỚC 3: Xóa dữ liệu tạm
+      localStorage.removeItem("cartData");
+      localStorage.removeItem("cartTotal");
+      localStorage.removeItem("currentOrderId");
+
+      setShowSuccess(true);
+      setTimeout(() => {
+        setShowSuccess(false);
+        navigate("/order", { replace: true });
+      }, 2000);
+    } catch (error) {
+      console.error("❌ Lỗi khi xác nhận thanh toán:", error);
+      alert("Lỗi khi xác nhận thanh toán: " + error.message);
+    } finally {
+      setLoading(false); // 🆕 Tắt loading
+    }
+  };
 
 
   return (

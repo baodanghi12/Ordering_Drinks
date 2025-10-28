@@ -22,22 +22,43 @@ const InventoryPage = () => {
   const [selectedIngredient, setSelectedIngredient] = useState(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-// ✅ Tổng giá nhập (dựa trên các phiếu IMP- trong importHistory)
+// ✅ Tính tổng giá trị NHẬP kho (đúng)
 const totalImportCost = useMemo(() => {
   return (importHistory || []).reduce((acc, inv) => acc + (inv.totalCost || 0), 0);
 }, [importHistory]);
 
-// ✅ Tính tổng giá vốn đã bán (dựa trên backend đã tính)
+// ✅ Tính tổng giá trị XUẤT kho theo giá trị THỰC TẾ
 const totalExportCost = useMemo(() => {
-  // Lấy tổng cost trực tiếp từ phiếu export
-  return exportHistory.reduce((acc, inv) => acc + (inv.totalCost || 0), 0);
-}, [exportHistory]);
+  return exportHistory.reduce((acc, exportDoc) => {
+    // Mỗi phiếu xuất kho có nhiều items
+    const exportValue = exportDoc.items.reduce((itemAcc, item) => {
+      // Tìm nguyên liệu trong inventory để lấy cost_per_unit
+      const ingredient = inventory.find(inv => inv._id === item.ingredientId);
+      if (!ingredient) return itemAcc;
+      
+      // Tính giá trị thực tế đã xuất
+      let actualExportValue = 0;
+      
+      if (ingredient.unit === ingredient.usageUnit) {
+        // Nếu cùng đơn vị: tính trực tiếp
+        actualExportValue = (item.quantity / ingredient.unitWeight) * ingredient.cost_per_unit;
+      } else {
+        // Nếu khác đơn vị: tính theo số lượng đã xuất
+        actualExportValue = item.quantity * (ingredient.cost_per_unit / ingredient.unitWeight);
+      }
+      
+      return itemAcc + actualExportValue;
+    }, 0);
+    
+    return acc + exportValue;
+  }, 0);
+}, [exportHistory, inventory]);
 const handleRowClick = (record) => {
   setSelectedIngredient(record);
   setDetailOpen(true);
 };
 
-// ✅ Còn lại trong kho
+// ✅ Tồn kho = Nhập - Xuất (theo giá trị thực)
 const remainingValue = useMemo(() => {
   return totalImportCost - totalExportCost;
 }, [totalImportCost, totalExportCost]);
@@ -251,22 +272,17 @@ useEffect(() => {
 
       {/* ===== Lịch sử xuất ===== */}
       <TabPane tab="Xuất kho" key="3">
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <RangePicker
-            size="small"
-            style={{ width: "100%" }}
-            onChange={handleExportDateChange}
-          />
-          <Input
-            placeholder="Tìm theo tên nguyên liệu xuất"
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-            size="small"
-            style={{ width: "100%" }}
-          />
-        </div>
-        <ExportHistoryTable data={filteredExportHistory} />
-      </TabPane>
+  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+    <RangePicker
+      size="small"
+      style={{ width: "100%" }}
+      onChange={handleExportDateChange}
+    />
+  </div>
+  <ExportHistoryTable data={exportHistory} inventory={inventory} />
+
+</TabPane>
+
     </Tabs>
 
     {/* 🔹 Nút hành động nổi (thay vì block) */}

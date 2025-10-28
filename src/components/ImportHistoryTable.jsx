@@ -1,5 +1,5 @@
 import React from "react";
-import { Table, Tooltip } from "antd";
+import { Table } from "antd";
 import dayjs from "dayjs";
 
 const ImportHistoryTable = ({ data }) => {
@@ -7,23 +7,51 @@ const ImportHistoryTable = ({ data }) => {
     {
       title: "Ngày nhập",
       dataIndex: "date",
-      render: (text) => dayjs(text).format("YYYY-MM-DD HH:mm"),
-    },
-    { title: "Tên NVL", dataIndex: "name" },
-    { title: "Số lượng", dataIndex: "quantity" },
-    { title: "Đơn vị", dataIndex: "unit" },
-    {
-      title: "Giá vốn",
-      dataIndex: "unitCost",
-      render: (text, record) => (
-        <Tooltip
-          title={`Trọng lượng/1 đơn vị: ${record.unitWeight ?? "-"}\nGhi chú: ${
-            record.note ?? "-"
-          }`}
+      align: "center",
+      render: (text) => (
+        <div
+          style={{
+            fontWeight: 500,
+            color: "#333",
+            fontSize: "0.9rem",
+          }}
         >
-          {text?.toLocaleString() + "đ"}
-        </Tooltip>
+          {dayjs(text).format("DD/MM HH:mm")}
+        </div>
       ),
+      width: "40%", // ✅ cân đối hơn
+    },
+    {
+      title: "Thông tin",
+      dataIndex: "name",
+      render: (_, record) => (
+        <div
+          style={{
+            lineHeight: "1.6rem",
+            whiteSpace: "normal",
+            wordBreak: "break-word",
+            paddingLeft: "6px",
+          }}
+        >
+          <div style={{ fontWeight: 600, color: "#000", textTransform: "capitalize" }}>
+            {record.name}
+          </div>
+          <div style={{ fontSize: "0.85rem", color: "#666" }}>
+            {record.quantity} {record.unit} ×{" "}
+            {record.unitCost.toLocaleString("vi-VN")}₫
+          </div>
+          <div style={{ fontSize: "0.85rem", color: "#1677ff" }}>
+            Tổng nhập:{" "}
+            {(record.quantity * record.unitCost).toLocaleString("vi-VN")}₫
+          </div>
+          {record.note && (
+            <div style={{ fontSize: "0.8rem", color: "#999" }}>
+              Ghi chú: {record.note}
+            </div>
+          )}
+        </div>
+      ),
+      width: "60%", // ✅ chiếm đều phần còn lại
     },
   ];
 
@@ -33,6 +61,21 @@ const ImportHistoryTable = ({ data }) => {
       columns={columns}
       size="small"
       pagination={{ pageSize: 5 }}
+      rowKey="_id"
+      style={{
+        width: "100%",
+      }}
+      rowClassName={() => "import-row"}
+      onRow={() => ({
+        style: {
+          height: "auto",
+          padding: "14px 10px",
+          verticalAlign: "middle",
+          background: "#fff",
+        },
+      })}
+      showHeader={true}
+      bordered={false}
     />
   );
 };
