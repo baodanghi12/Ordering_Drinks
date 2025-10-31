@@ -111,13 +111,20 @@ export const loadImportHistory = async (start, end) => {
   }
 };
 
-// 🆕 Thêm mới: Lịch sử xuất kho
+// Trong api.js - THÊM DEBUG
 export const loadExportHistory = async (start, end) => {
   try {
     let query = "";
     if (start && end) query = `?start=${start}&end=${end}`;
+    
+    // ✅ LẤY TẤT CẢ (OUT- + RET-) để có thể so khớp
     const res = await fetchExportHistory(query);
-    return res || [];
+    console.log("🔍 DEBUG - Tất cả dữ liệu từ API:", res?.map(item => ({
+      invoiceId: item.invoiceId,
+      note: item.note
+    })));
+    
+    return res || []; // ✅ TRẢ VỀ TẤT CẢ, không lọc
   } catch (err) {
     console.error(err);
     message.error("Lỗi khi tải lịch sử xuất kho");
@@ -211,3 +218,40 @@ export const exportInventoryFromOrder = async (orderId, cartItems) => {
     throw error;
   }
 };
+// 🆕 Thêm hàm hủy nguyên liệu đã khui
+export const disposeOpenedIngredient = async (ingredientId, disposedWeight, reason) => {
+  try {
+    const response = await axios.post(`${API_URL}/inventory/${ingredientId}/dispose-opened`, {
+      disposedWeight,
+      reason
+    });
+    return response.data;
+  } catch (error) {
+    console.error("❌ Lỗi khi hủy nguyên liệu đã khui:", error);
+    throw error;
+  }
+};
+
+// 🆕 Thêm hàm lấy chi tiết nguyên liệu đã khui
+export const getOpenedIngredientDetails = async (ingredientId) => {
+  try {
+    const response = await axios.get(`${API_URL}/inventory/${ingredientId}/opened-details`);
+    return response.data;
+  } catch (error) {
+    console.error("❌ Lỗi khi lấy chi tiết nguyên liệu đã khui:", error);
+    throw error;
+  }
+};
+// 🆕 LẤY TOÀN BỘ PHIẾU XUẤT (OUT- và RET-) cho mục kiểm tra hoàn kho
+export const fetchAllExportHistory = async (query = "") => {
+  try {
+    const res = await axios.get(`${API_URL}/inventory/export-history${query}`);
+    const allData = res.data || [];
+    console.log("🧾 Tất cả phiếu xuất (OUT + RET):", allData.map(d => d.invoiceId));
+    return allData;
+  } catch (error) {
+    console.error("❌ Lỗi khi lấy toàn bộ export history:", error);
+    return [];
+  }
+};
+

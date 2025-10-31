@@ -24,24 +24,32 @@ const IngredientDetailModal = ({ open, onClose, ingredient }) => {
         <Descriptions.Item label="Tên">{ingredient.name}</Descriptions.Item>
         <Descriptions.Item label="Đơn vị chính">{ingredient.unit}</Descriptions.Item>
         <Descriptions.Item label="Đơn vị sử dụng">{ingredient.usageUnit}</Descriptions.Item>
-        <Descriptions.Item label="Tồn kho hiện tại">
+        
+        {/* ✅ HIỂN THỊ RÕ RÀNG KHO CHƯA KHUI & ĐÃ KHUI */}
+        <Descriptions.Item label="Tồn kho chưa khui">
           {ingredient.stock} {ingredient.unit}
-        </Descriptions.Item>
-
-        <Descriptions.Item label="Trọng lượng mỗi đơn vị">
-          {ingredient.unitWeight} {ingredient.usageUnit}
         </Descriptions.Item>
 
         {/* ✅ Chỉ hiển thị khi có quy đổi */}
         {isConvertible && (
           <>
-            <Descriptions.Item label="Trọng lượng còn lại (đang dùng)">
+            <Descriptions.Item label="Trọng lượng mỗi đơn vị">
+              {ingredient.unitWeight} {ingredient.usageUnit}
+            </Descriptions.Item>
+            <Descriptions.Item label="Đang dùng (đã khui)">
               {ingredient.remainingWeight} {ingredient.usageUnit}
             </Descriptions.Item>
-            <Descriptions.Item label="Tổng trọng lượng còn lại">
+            <Descriptions.Item label="Tổng còn lại">
               {totalUsageWeight} {ingredient.usageUnit}
             </Descriptions.Item>
           </>
+        )}
+
+        {/* ✅ HIỂN THỊ CHO NGUYÊN LIỆU KHÔNG QUY ĐỔI */}
+        {!isConvertible && ingredient.remainingWeight > 0 && (
+          <Descriptions.Item label="Đang dùng (đã khui)">
+            {ingredient.remainingWeight} {ingredient.usageUnit || ingredient.unit}
+          </Descriptions.Item>
         )}
 
         <Descriptions.Item label="Giá vốn trung bình">

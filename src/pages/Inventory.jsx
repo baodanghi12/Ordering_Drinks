@@ -27,32 +27,48 @@ const totalImportCost = useMemo(() => {
   return (importHistory || []).reduce((acc, inv) => acc + (inv.totalCost || 0), 0);
 }, [importHistory]);
 
-// ✅ Tính tổng giá trị XUẤT kho theo giá trị THỰC TẾ
+// ✅ Tính tổng giá trị XUẤT kho thực tế (chỉ tính OUT chưa hoàn kho)
 const totalExportCost = useMemo(() => {
-  return exportHistory.reduce((acc, exportDoc) => {
-    // Mỗi phiếu xuất kho có nhiều items
-    const exportValue = exportDoc.items.reduce((itemAcc, item) => {
-      // Tìm nguyên liệu trong inventory để lấy cost_per_unit
-      const ingredient = inventory.find(inv => inv._id === item.ingredientId);
-      if (!ingredient) return itemAcc;
-      
-      // Tính giá trị thực tế đã xuất
-      let actualExportValue = 0;
-      
-      if (ingredient.unit === ingredient.usageUnit) {
-        // Nếu cùng đơn vị: tính trực tiếp
-        actualExportValue = (item.quantity / ingredient.unitWeight) * ingredient.cost_per_unit;
-      } else {
-        // Nếu khác đơn vị: tính theo số lượng đã xuất
-        actualExportValue = item.quantity * (ingredient.cost_per_unit / ingredient.unitWeight);
-      }
-      
-      return itemAcc + actualExportValue;
-    }, 0);
-    
-    return acc + exportValue;
+  if (!exportHistory.length) return 0;
+
+  const outExports = exportHistory.filter(doc => doc.invoiceId?.startsWith("OUT-"));
+  const retExports = exportHistory.filter(doc => doc.invoiceId?.startsWith("RET-"));
+
+  // ✅ Bắt mọi mã đơn (OD-..., DH-...) trong note
+  const extractOrderCode = (note = "") => {
+    const match = note.match(/(OD-[\w-]+|DH[\w-]+)/i);
+    return match ? match[1] : null;
+  };
+
+  // 1️⃣ Lấy danh sách đơn đã hoàn
+  const returnedOrderIds = retExports
+    .map(ret => {
+      const orderCode = extractOrderCode(ret.note);
+      if (orderCode)
+        console.log("🔁 Phát hiện phiếu hoàn:", ret.invoiceId, "→ đơn:", orderCode);
+      return orderCode;
+    })
+    .filter(Boolean);
+
+  // 2️⃣ Tính tổng OUT chưa bị hoàn
+  const total = outExports.reduce((acc, exp) => {
+    const orderCode = extractOrderCode(exp.note);
+    if (returnedOrderIds.includes(orderCode)) {
+      console.log("🧮 Bỏ qua OUT vì đã hoàn:", exp.invoiceId, "→", orderCode);
+      return acc;
+    }
+    return acc + (exp.totalCost || 0);
   }, 0);
-}, [exportHistory, inventory]);
+
+  console.log("📦 OUT-RET check → returnedOrderIds:", returnedOrderIds);
+  console.log("📊 Tổng xuất (đã trừ hoàn):", total.toLocaleString());
+  return total;
+}, [exportHistory]);
+
+
+
+
+
 const handleRowClick = (record) => {
   setSelectedIngredient(record);
   setDetailOpen(true);
@@ -136,23 +152,43 @@ const remainingValue = useMemo(() => {
   window.addEventListener("resize", handleResize);
   return () => window.removeEventListener("resize", handleResize);
 }, []);
+
+// Trong Inventory.jsx - THÊM DEBUG
 useEffect(() => {
   getInventory();
 
-  // 🔹 Lấy tất cả phiếu xuất kho (OUT-)
   const loadExport = async () => {
-    const res = await loadExportHistory();
-    setExportHistory(res || []);
-  };
+  const res = await loadExportHistory();
+  console.log("🧾 exportHistory từ API:", res.map(r => ({
+    invoiceId: r.invoiceId,
+    totalCost: r.totalCost,
+    note: r.note
+  })));
+  setExportHistory(res || []);
+};
   loadExport();
 
-  // 🔹 Lấy tất cả phiếu nhập kho (IMP-)
   const loadImport = async () => {
     const res = await loadImportHistory();
     setImportHistory(res || []);
   };
   loadImport();
 }, []);
+
+// THÊM useEffect để debug khi exportHistory thay đổi
+useEffect(() => {
+  console.log("🔄 exportHistory updated:", exportHistory);
+  console.log("📊 Số lượng phiếu xuất:", exportHistory.length);
+  console.log("🔍 Các phiếu có note 'hủy':", 
+    exportHistory.filter(item => 
+      item.note?.toLowerCase().includes('hủy') || 
+      item.invoiceId?.startsWith('RET-')
+    ).map(item => ({
+      invoiceId: item.invoiceId,
+      note: item.note
+    }))
+  );
+}, [exportHistory]);
 
 
 
