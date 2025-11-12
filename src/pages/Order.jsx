@@ -180,25 +180,27 @@ const handlePlaceOrder = async () => {
         qty: i.qty,
         note: i.note,
         price: i.price,
-        cost: i.cost,
-        containerCost: i.containerCost || 0,
+        // ✅ SỬA: cost → cost_of_goods (theo schema)
+        cost_of_goods: (i.cost || 0) * (i.qty || 1),
         isSeparate: i.isSeparate || false,
         extras: i.extras?.map((ex) => ({
           productId: ex.productId,
           name: ex.name,
           price: ex.price,
           qty: ex.qty,
-          cost: ex.cost,
-          isSeparate: false,
+          // ✅ SỬA: cost → cost_of_goods (theo schema)
+          cost_of_goods: (ex.cost || 0) * (ex.qty || 1),
+          isSeparate: ex.isSeparate || false, // ✅ GIỮ NGUYÊN GIÁ TRỊ GỐC
         })) || [],
       })),
       total: cartTotal,
-      totalCost: cartCost,
+      totalCost: cartCost, // ✅ GIỮ NGUYÊN - schema có field này
       profit: cartTotal - cartCost,
       paymentMethod: "cash",
-      status: "pending" // 🔹 THÊM status pending
+      status: "pending"
     };
-
+    // 🔹 THÊM DEBUG ĐỂ KIỂM TRA
+    console.log("🚀 Payload gửi lên server:", JSON.stringify(payload, null, 2));
     const orderResult = await createOrder(payload);
 
     // Lưu orderId và dữ liệu giỏ hàng để sử dụng ở trang thanh toán
@@ -220,10 +222,21 @@ const handlePlaceOrder = async () => {
     });
 
   } catch (err) {
-    console.error("❌ Lỗi tạo đơn:", err);
-    message.error("Lỗi tạo đơn: " + err.message);
+  console.error("❌ Lỗi tạo đơn:", err);
+  console.error("📝 Response data từ server:", err.response?.data); // 🔹 QUAN TRỌNG
+  console.error("📝 Response status:", err.response?.status);
+  console.error("📝 Response headers:", err.response?.headers);
+  
+  const errorMessage = err.response?.data?.message || err.message;
+  const insufficientItems = err.response?.data?.insufficientItems;
+  
+  if (insufficientItems && insufficientItems.length > 0) {
+    message.error(`Không đủ nguyên liệu: ${insufficientItems.map(i => i.ingredient).join(", ")}`);
+  } else {
+    message.error("Lỗi tạo đơn: " + errorMessage);
   }
-};
+}
+}
 
 
 

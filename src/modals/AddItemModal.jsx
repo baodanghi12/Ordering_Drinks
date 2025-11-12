@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Modal, Select, Input, InputNumber, Empty, Checkbox  } from "antd";
-import { fetchProducts } from "../services/api"; // ✅ để lấy danh sách extra từ DB
+import { Modal, Select, Input, InputNumber, Empty, Checkbox ,  Tag  } from "antd";
+import { fetchProducts, loadInventory } from "../services/api"; // ✅ THÊM loadInventory
 const { Option } = Select;
 
 const AddItemModal = ({
@@ -18,20 +18,68 @@ const AddItemModal = ({
   const sizeOptions = product?.sizes || [];
   const [extras, setExtras] = useState([]); // danh sách extra lấy từ DB
   const [selectedExtras, setSelectedExtras] = useState([]); // các extra được chọn
+  const [inventory, setInventory] = useState([]); // ✅ THÊM state inventory
   // ✅ Tự động load extra khi mở modal
-// ✅ Khi mở modal hoặc đổi sản phẩm → reset topping và load danh sách extra
+// ✅ SỬA: Load cả extras VÀ inventory
 useEffect(() => {
-  if (!visible) return; // chỉ chạy khi modal mở
-  setSelectedExtras([]); // reset topping mỗi lần mở
+  if (!visible) return;
+  setSelectedExtras([]);
 
-  const loadExtras = async () => {
-    const data = await fetchProducts();
-    const extrasOnly = data.filter((p) => p.isExtra);
-    setExtras(extrasOnly);
+  const loadData = async () => {
+    try {
+      // ✅ Load cả products và inventory cùng lúc
+      const [productsData, inventoryData] = await Promise.all([
+        fetchProducts(),
+        loadInventory()
+      ]);
+      
+      const extrasOnly = productsData.filter((p) => p.isExtra);
+      setExtras(extrasOnly);
+      setInventory(inventoryData || []);
+      
+      console.log("📦 Inventory loaded:", inventoryData);
+      console.log("🍹 Extras loaded:", extrasOnly);
+    } catch (error) {
+      console.error("❌ Lỗi load data:", error);
+    }
   };
-  loadExtras();
+  
+  loadData();
 }, [visible, product]);
-
+  // ✅ SỬA Hàm kiểm tra extra có đủ hàng không - XỬ LÝ CHUẨN HÓA TÊN
+const hasEnoughStock = (extraProduct) => {
+  if (!inventory || inventory.length === 0) return false;
+  
+  // Chuẩn hóa tên: bỏ dấu, chuyển lowercase, bỏ khoảng trắng thừa
+  const normalizeName = (name) => {
+    return name
+      .toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // bỏ dấu
+      .replace(/\s+/g, ' ') // chuẩn hóa khoảng trắng
+      .trim();
+  };
+  
+  const extraNameNormalized = normalizeName(extraProduct.name);
+  
+  // Tìm nguyên liệu trong inventory trùng tên đã chuẩn hóa
+  const inventoryItem = inventory.find(item => {
+    const itemNameNormalized = normalizeName(item.name);
+    console.log(`🔍 So sánh: "${extraNameNormalized}" vs "${itemNameNormalized}"`);
+    return itemNameNormalized === extraNameNormalized;
+  });
+  
+  console.log(`📊 Kết quả tìm kiếm cho "${extraProduct.name}":`, inventoryItem);
+  
+  if (!inventoryItem) {
+    console.log(`❌ "${extraProduct.name}" không tìm thấy trong inventory`);
+    return false;
+  }
+  
+  const hasStock = inventoryItem.stock > 0;
+  console.log(`✅ "${extraProduct.name}": stock = ${inventoryItem.stock}, có hàng = ${hasStock}`);
+  
+  return hasStock;
+};
   // ✅ Nếu chỉ có 1 size → tự chọn và khóa Select
   useEffect(() => {
     if (sizeOptions.length === 1) {
@@ -159,65 +207,76 @@ onOk={() => {
 
       {/* Extra (topping) */}
 {extras.length > 0 && (
-  <div style={{ marginBottom: 16 }}>
-    <b>Extra (Topping)</b>
-    <div
-      style={{
-        marginTop: 8,
-        display: "flex",
-        flexWrap: "wrap",
-        gap: "0.5rem",
-      }}
-    >
-{extras.map((ex) => {
-  const existing = selectedExtras.find((e) => e._id === ex._id);
-  return (
-    <div
-      key={ex._id}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        width: "100%",
-        maxWidth: "320px",
-      }}
-    >
-      <Checkbox
-        checked={!!existing}
-        onChange={(e) => {
-          if (e.target.checked) {
-            setSelectedExtras([...selectedExtras, { ...ex, qty: 1 }]); // mặc định 1 phần
-          } else {
-            setSelectedExtras(selectedExtras.filter((item) => item._id !== ex._id));
-          }
-        }}
-      >
-        {ex.name} ({ex.price.toLocaleString()}đ)
-      </Checkbox>
+        <div style={{ marginBottom: 16 }}>
+          <b>Extra (Topping)</b>
+          <div
+            style={{
+              marginTop: 8,
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "0.5rem",
+            }}
+          >
+            {extras.map((ex) => {
+              const existing = selectedExtras.find((e) => e._id === ex._id);
+              const isOutOfStock = !hasEnoughStock(ex); // ✅ KIỂM TRA TỒN KHO
 
-      {existing && (
-        <InputNumber
-          min={1}
-          max={10}
-          value={existing.qty}
-          onChange={(val) => {
-            setSelectedExtras(
-              selectedExtras.map((item) =>
-                item._id === ex._id ? { ...item, qty: val } : item
-              )
-            );
-          }}
-          size="small"
-          style={{ width: "60px" }}
-        />
+              return (
+                <div
+                  key={ex._id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    width: "100%",
+                    maxWidth: "320px",
+                    opacity: isOutOfStock ? 0.5 : 1, // ✅ LÀM MỜ KHI HẾT HÀNG
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <Checkbox
+                      checked={!!existing}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedExtras([...selectedExtras, { ...ex, qty: 1 }]);
+                        } else {
+                          setSelectedExtras(selectedExtras.filter((item) => item._id !== ex._id));
+                        }
+                      }}
+                      disabled={isOutOfStock} // ✅ VÔ HIỆU HÓA KHI HẾT HÀNG
+                    >
+                      {ex.name} ({ex.price.toLocaleString()}đ)
+                    </Checkbox>
+                    
+                    {isOutOfStock && (
+                      <Tag color="red" style={{ fontSize: '10px', padding: '2px 4px' }}>
+                        Tạm hết
+                      </Tag>
+                    )}
+                  </div>
+
+                  {existing && (
+                    <InputNumber
+                      min={1}
+                      max={10}
+                      value={existing.qty}
+                      onChange={(val) => {
+                        setSelectedExtras(
+                          selectedExtras.map((item) =>
+                            item._id === ex._id ? { ...item, qty: val } : item
+                          )
+                        );
+                      }}
+                      size="small"
+                      style={{ width: "60px" }}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
       )}
-    </div>
-  );
-})}
-
-    </div>
-  </div>
-)}
 
       {/* Hiển thị giá (tự động tính) */}
       <div

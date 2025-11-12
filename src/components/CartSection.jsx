@@ -165,8 +165,6 @@ const CartSection = ({
   <div style={{ fontSize: "0.9rem", color: "#666" }}>
     Số lượng: {item.qty} × {item.price.toLocaleString()}đ
   </div>
-
-
                   {/* Hiển thị topping */}
                   {item.extras && item.extras.length > 0 && (
                     <ul

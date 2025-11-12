@@ -203,14 +203,14 @@ export const updateOrderPayment = async (orderId, paymentMethod) => {
   const res = await axios.put(`${API_URL}/orders/${orderId}/payment`, { paymentMethod });
   return res.data;
 };
-// ✅ Xuất kho từ đơn hàng với log chi tiết
+// ✅ SỬA LẠI endpoint - dùng route orders thay vì inventory
 export const exportInventoryFromOrder = async (orderId, cartItems) => {
   try {
     console.log(`📞 [API] Gọi exportInventoryFromOrder: ${orderId}`);
-    const response = await axios.post(`${API_URL}/inventory/export-from-order`, {
-      orderId,
-      items: cartItems
-    });
+    
+    // ✅ SỬA ENDPOINT: /api/orders/:id/export-inventory
+    const response = await axios.post(`${API_URL}/orders/${orderId}/export-inventory`);
+    
     console.log(`✅ [API] exportInventoryFromOrder thành công: ${orderId}`);
     return response.data;
   } catch (error) {

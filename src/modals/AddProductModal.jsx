@@ -8,7 +8,8 @@ import {
   Space,
   InputNumber,
   message,
-  AutoComplete
+  AutoComplete,
+   Checkbox // ✅ Thêm dòng này
 } from "antd";
 import ImageUpload from "../components/ImageUpload";
 import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";
@@ -103,7 +104,14 @@ const handleSave = () => {
     option.value.toLowerCase().includes(inputValue.toLowerCase())
   }
 />
-
+{/* ✅ Checkbox Là topping (Extra) */}
+<Checkbox
+  checked={newProduct.isExtra || false}
+  onChange={(e) => setNewProduct({ ...newProduct, isExtra: e.target.checked })}
+  style={{ marginBottom: 12 }}
+>
+  Là topping (Extra)
+</Checkbox>
 
       {/* Danh sách size */}
       <Card
