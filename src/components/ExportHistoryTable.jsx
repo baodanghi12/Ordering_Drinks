@@ -12,8 +12,7 @@ const ExportHistoryTable = ({ data = [], inventory = [] }) => {
     return (data || []).filter(item => item.invoiceId?.startsWith("RET-"));
   }, [data]);
 
-  // ✅ Tính toán dữ liệu với kiểm tra hủy đơn
-const groupedData = useMemo(() => {
+  const groupedData = useMemo(() => {
   if (!Array.isArray(data)) return [];
 
   return data
@@ -25,28 +24,54 @@ const groupedData = useMemo(() => {
       };
 
       const orderCode = extractOrderCode(record.note);
+      
+      // ✅ SỬA: Tính totalValue GIỐNG NHƯ TRONG MODAL
       const totalValue = (record.items || []).reduce((sum, item) => {
-        return sum + (item.totalCost || 0);
+        const quantity = Number(item.quantity) || 0;
+        
+        // Tìm nguyên liệu trong inventory để lấy thông tin chuyển đổi
+        const ing = inventory.find(inv => 
+          inv._id === item.ingredientId || inv.name === item.name
+        );
+        
+        let unitCost = Number(item.unitCost) || 0;
+        
+        // Nếu có thông tin inventory, tính giá theo usageUnit
+        if (ing) {
+          const baseCost = Number(ing.averageCostPerUnit || ing.cost_per_unit || 0);
+          const unitWeight = Number(ing.unitWeight || 1);
+          const ingUnit = (ing.unit || "").toString();
+          const usageUnit = (ing.usageUnit || "").toString();
+
+          if (usageUnit && unitWeight && ingUnit && ingUnit !== usageUnit) {
+            // Chuyển đổi đơn vị (ví dụ: từ bịch -> gram)
+            unitCost = unitWeight > 0 ? baseCost / unitWeight : baseCost;
+          } else {
+            unitCost = baseCost;
+          }
+        }
+        
+        const itemTotal = Math.round(quantity * unitCost);
+        
+        console.log('💰 ITEM CALC:', {
+          name: item.name,
+          quantity,
+          originalUnitCost: item.unitCost,
+          calculatedUnitCost: unitCost,
+          itemTotal
+        });
+        
+        return sum + itemTotal;
       }, 0);
 
-      // ✅ Tìm phiếu RET tương ứng
+      // ... phần còn lại giữ nguyên
       const matchingReturn = returnInvoices.find((ret) => {
         const retOrderCode = extractOrderCode(ret.note);
         return orderCode && retOrderCode && retOrderCode === orderCode;
       });
 
       const isCancelled = !!matchingReturn;
-      const isRefunded =
-        matchingReturn && /hoàn\s*tiền/i.test(matchingReturn.note);
-
-      if (matchingReturn) {
-        console.log(
-          `🎯 HOÀN KHO: ${record.invoiceId} ↔ ${matchingReturn.invoiceId}`,
-          "→",
-          orderCode,
-          isRefunded ? "(ĐÃ HOÀN TIỀN)" : ""
-        );
-      }
+      const isRefunded = matchingReturn && /hoàn\s*tiền/i.test(matchingReturn.note);
 
       return {
         _id: record._id,
@@ -59,7 +84,7 @@ const groupedData = useMemo(() => {
         isRefunded,
       };
     });
-}, [data, returnInvoices]);
+}, [data, returnInvoices, inventory]); // ✅ Thêm inventory vào dependencies
 
 
   // ✅ Các cột hiển thị (giữ nguyên)

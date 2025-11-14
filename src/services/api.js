@@ -255,3 +255,56 @@ export const fetchAllExportHistory = async (query = "") => {
   }
 };
 
+// 📊 DASHBOARD STATS
+// =========================
+export const fetchDashboardStats = async (startDate, endDate) => {
+  try {
+    const params = new URLSearchParams();
+    if (startDate) params.append('start', startDate);
+    if (endDate) params.append('end', endDate);
+    
+    const res = await axios.get(`${API_URL}/dashboard/stats?${params}`);
+    return res.data;
+  } catch (error) {
+    console.error("Dashboard stats error:", error);
+    throw error.response?.data?.error || "Không thể tải thống kê dashboard";
+  }
+};
+// =========================
+// 💰 EXPENSE MANAGEMENT (Quản lý chi phí)
+// =========================
+export const fetchExpenses = async (query = "") => {
+  try {
+    const res = await axios.get(`${API_URL}/expenses${query}`);
+    return res.data;
+  } catch (error) {
+    console.error("Fetch expenses error:", error);
+    throw error.response?.data?.error || "Không thể tải danh sách chi phí";
+  }
+};
+
+export const createExpense = async (payload) => {
+  try {
+    const res = await axios.post(`${API_URL}/expenses`, payload, {
+      headers: { "Content-Type": "application/json" },
+    });
+    return res.data;
+  } catch (error) {
+    console.error("Create expense error:", error);
+    throw error.response?.data?.error || "Không thể tạo chi phí";
+  }
+};
+
+export const loadExpenses = async (start, end) => {
+  try {
+    let query = "";
+    if (start && end) query = `?start=${start}&end=${end}`;
+    const res = await fetchExpenses(query);
+    return res || [];
+  } catch (err) {
+    console.error(err);
+    message.error("Lỗi khi tải danh sách chi phí");
+    return [];
+  }
+};
+

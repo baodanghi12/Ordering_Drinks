@@ -12,6 +12,7 @@ import ProductAdmin from "./pages/ProductAdmin"; // ✅ thêm trang quản lý m
 import Payment from "./pages/Payment";
 import ProductManagement from "./pages/ProductManagement";
 import Recipes from "./pages/Recipes";
+import ExpenseManagement from "./components/ExpenseManagement";
 // ✅ Component trung gian để kiểm soát hiển thị Navbar
 const AppContent = () => {
   const location = useLocation();
@@ -35,6 +36,7 @@ const AppContent = () => {
         <Route path="/products" element={<ProductManagement/>} />
         <Route path="/product-admin" element={<ProductAdmin />} /> {/* ✅ thêm route quản lý menu */}
         <Route path="/recipes" element={<Recipes />} />
+        <Route path="/expenses" element={<ExpenseManagement />} />
       </Routes>
 
       {/* Navbar hiển thị ở mọi trang trừ trang Login */}

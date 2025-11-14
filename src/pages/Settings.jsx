@@ -36,7 +36,15 @@ const Settings = () => {
         >
           Quản lý công thức
         </Button>
-
+        {/* 🆕 Nút quản lý chi phí */}
+        <Button
+          type="default"
+          block
+          style={{ marginBottom: "0.5rem", backgroundColor: "#fff7e6", borderColor: "#ffa940" }}
+          onClick={() => navigate("/expenses")}
+        >
+          Quản lý Chi phí
+        </Button>
         {/* Nút đăng xuất */}
         <Button type="primary" danger block onClick={handleLogout}>
           Đăng xuất
