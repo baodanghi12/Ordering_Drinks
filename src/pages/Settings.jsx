@@ -45,6 +45,15 @@ const Settings = () => {
         >
           Quản lý Chi phí
         </Button>
+         {/* 🆕 Nút quản lý khuyến mãi */}
+        <Button
+          type="default"
+          block
+          style={{ marginBottom: "0.5rem", backgroundColor: "#e6f7ff", borderColor: "#91d5ff" }}
+          onClick={() => navigate("/promotions")}
+        >
+          Quản lý khuyến mãi
+        </Button>
         {/* Nút đăng xuất */}
         <Button type="primary" danger block onClick={handleLogout}>
           Đăng xuất

@@ -6,6 +6,7 @@
   text-align: center;
   box-sizing: border-box;
   width: 100%;
+  
 }
 /* ✅ Reset mặc định để không còn margin trắng ở đầu trang */
 html, body, #root {

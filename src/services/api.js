@@ -308,3 +308,92 @@ export const loadExpenses = async (start, end) => {
   }
 };
 
+// api.js - Thêm các functions còn thiếu
+// services/api.js - Thêm functions mới
+export const fetchPromotions = async (type = '') => {
+  try {
+    const url = type ? `${API_URL}/promotion?promotionType=${type}` : `${API_URL}/promotion`;
+    const res = await axios.get(url);
+    return res.data;
+  } catch (err) {
+    console.error("Lỗi khi fetch promotions:", err);
+    return [];
+  }
+};
+export const getPromotion = async (id) => {
+  try {
+    const res = await axios.get(`${API_URL}/promotion/${id}`);
+    return res.data;
+  } catch (err) {
+    console.error("Lỗi khi lấy chi tiết promotion:", err);
+    throw err;
+  }
+};
+
+// ✅ Cập nhật applyPromoCode để hỗ trợ buy_x_get_y
+export const applyPromoCode = async (code, total, items = []) => {
+  try {
+    const res = await axios.post(`${API_URL}/promotion/apply-promo`, {
+      code,
+      total,
+      items
+    });
+    return res.data;
+  } catch (err) {
+    console.error("Lỗi khi áp dụng promotion:", err);
+    throw err;
+  }
+};
+
+export const createPromotion = async (payload) => {
+  try {
+    const res = await axios.post(`${API_URL}/promotion`, payload);
+    return res.data;
+  } catch (err) {
+    console.error("Lỗi khi tạo promotion:", err);
+    throw err;
+  }
+};
+
+export const updatePromotion = async (id, payload) => {
+  try {
+    const res = await axios.put(`${API_URL}/promotion/${id}`, payload);
+    return res.data;
+  } catch (err) {
+    console.error("Lỗi khi cập nhật promotion:", err);
+    throw err;
+  }
+};
+
+export const deletePromotion = async (id) => {
+  try {
+    const res = await axios.delete(`${API_URL}/promotion/${id}`);
+    return res.data;
+  } catch (err) {
+    console.error("Lỗi khi xóa promotion:", err);
+    throw err;
+  }
+};
+// Thêm vào services/api.js
+export const fetchProductCosts = async () => {
+  try {
+    const response = await axios.get('/api/products/costs');
+    return response.data;
+  } catch (error) {
+    console.error('Lỗi khi tải chi phí sản phẩm:', error);
+    return {};
+  }
+};
+
+export const getBusinessStats = async () => {
+  try {
+    const response = await axios.get('/api/business/stats');
+    return response.data;
+  } catch (error) {
+    console.error('Lỗi khi tải thống kê kinh doanh:', error);
+    return {
+      avgProductCost: 50000, // Giá trị mặc định
+      profitMargin: 0.3,     // 30% mặc định
+    };
+  }
+};
