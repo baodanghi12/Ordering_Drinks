@@ -397,3 +397,29 @@ export const getBusinessStats = async () => {
     };
   }
 };
+// services/api.js - THÊM HÀM NÀY
+export const fetchCategories = async () => {
+  try {
+    const response = await axios.get(`${API_URL}/categories`);
+    return response.data;
+  } catch (error) {
+    console.error('Lỗi khi tải danh mục:', error);
+    // Fallback: lấy từ products nếu endpoint chưa có
+    return getCategoriesFromProducts();
+  }
+};
+
+// Fallback: lấy danh mục từ products
+const getCategoriesFromProducts = async () => {
+  try {
+    const products = await fetchProducts();
+    const categories = [...new Set(products
+      .filter(p => p.category)
+      .map(p => typeof p.category === 'object' ? p.category.name : p.category)
+    )].sort();
+    return categories;
+  } catch (error) {
+    console.error('Lỗi khi lấy danh mục từ products:', error);
+    return [];
+  }
+};
