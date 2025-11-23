@@ -345,25 +345,60 @@ export const applyPromoCode = async (code, total, items = []) => {
   }
 };
 
+// =========================
+// 🎁 PROMOTIONS
+// =========================
 export const createPromotion = async (payload) => {
+  console.log('📡 [API] createPromotion called with payload:', payload);
+  console.log('📡 [API] Making POST request to:', `${API_URL}/promotion`);
+  
   try {
-    const res = await axios.post(`${API_URL}/promotion`, payload);
+    const res = await axios.post(`${API_URL}/promotion`, payload, {
+      headers: { 
+        "Content-Type": "application/json",
+      },
+      timeout: 30000
+    });
+    
+    console.log('✅ [API] createPromotion success - Status:', res.status);
+    console.log('✅ [API] Response data:', res.data);
     return res.data;
-  } catch (err) {
-    console.error("Lỗi khi tạo promotion:", err);
-    throw err;
+    
+  } catch (error) {
+    console.error('❌ [API] createPromotion error:');
+    console.error('❌ [API] Error message:', error.message);
+    console.error('❌ [API] Error code:', error.code);
+    console.error('❌ [API] Error response:', error.response?.data);
+    console.error('❌ [API] Error status:', error.response?.status);
+    
+    if (error.response) {
+      // Server responded with error status
+      throw error;
+    } else if (error.request) {
+      // Request was made but no response received
+      console.error('❌ [API] No response received:', error.request);
+      throw new Error('Không nhận được phản hồi từ server');
+    } else {
+      // Something else happened
+      throw error;
+    }
   }
 };
 
 export const updatePromotion = async (id, payload) => {
+  console.log('📡 API - updatePromotion called:', id, payload);
   try {
-    const res = await axios.put(`${API_URL}/promotion/${id}`, payload);
+    const res = await axios.put(`${API_URL}/promotion/${id}`, payload, {
+      headers: { "Content-Type": "application/json" },
+    });
+    console.log('✅ API - updatePromotion success:', res.data);
     return res.data;
-  } catch (err) {
-    console.error("Lỗi khi cập nhật promotion:", err);
-    throw err;
+  } catch (error) {
+    console.error('❌ API - updatePromotion error:', error);
+    throw error;
   }
 };
+
 
 export const deletePromotion = async (id) => {
   try {
@@ -397,29 +432,162 @@ export const getBusinessStats = async () => {
     };
   }
 };
-// services/api.js - THÊM HÀM NÀY
+// CẬP NHẬT HÀM fetchCategories
+
 export const fetchCategories = async () => {
   try {
-    const response = await axios.get(`${API_URL}/categories`);
-    return response.data;
+    // Lấy tất cả products để extract categories
+    const products = await fetchProducts();
+    console.log('📦 Products data for categories:', products);
+    
+    // Extract unique categories từ products
+    const uniqueCategories = [...new Set(products
+      .filter(p => p.category && p.category.trim() !== '')
+      .map(p => p.category)
+    )].sort();
+    
+    console.log('📂 Extracted categories:', uniqueCategories);
+    
+    // Format thành array objects
+    const categories = uniqueCategories.map((category, index) => ({
+      _id: `cat_${index + 1}`,
+      name: category,
+      id: `cat_${index + 1}`
+    }));
+    
+    return categories;
   } catch (error) {
-    console.error('Lỗi khi tải danh mục:', error);
-    // Fallback: lấy từ products nếu endpoint chưa có
-    return getCategoriesFromProducts();
+    console.error('❌ Lỗi khi tải danh mục từ products:', error);
+    return [];
   }
 };
 
-// Fallback: lấy danh mục từ products
-const getCategoriesFromProducts = async () => {
+// Cập nhật trong services/api.js
+
+export const getAverageProductCost = async () => {
   try {
-    const products = await fetchProducts();
-    const categories = [...new Set(products
-      .filter(p => p.category)
-      .map(p => typeof p.category === 'object' ? p.category.name : p.category)
-    )].sort();
-    return categories;
+    console.log('🔍 [FRONTEND] Gọi API /products/average-cost...');
+    const response = await axios.get(`${API_URL}/products/average-cost`);
+    console.log('✅ [FRONTEND] API response:', response.data);
+    return response.data;
   } catch (error) {
-    console.error('Lỗi khi lấy danh mục từ products:', error);
-    return [];
+    console.error('❌ [FRONTEND] Lỗi chi tiết khi tải chi phí sản phẩm:');
+    console.error('❌ [FRONTEND] Error message:', error.message);
+    console.error('❌ [FRONTEND] Error response:', error.response?.data);
+    console.error('❌ [FRONTEND] Error status:', error.response?.status);
+    
+    // Fallback với tính toán từ products
+    try {
+      console.log('🔄 [FRONTEND] Thử tính toán từ products...');
+      const products = await fetchProducts();
+      
+      if (products && products.length > 0) {
+        const validProducts = products.filter(p => 
+          p.sizes && p.sizes.length > 0 && p.sizes[0].cost > 0 && p.sizes[0].price > 0
+        );
+        
+        if (validProducts.length > 0) {
+          const costs = validProducts.map(p => p.sizes[0].cost);
+          const prices = validProducts.map(p => p.sizes[0].price);
+          
+          const avgCost = costs.reduce((a, b) => a + b, 0) / costs.length;
+          const avgPrice = prices.reduce((a, b) => a + b, 0) / prices.length;
+          const profitMargin = (avgPrice - avgCost) / avgPrice;
+          
+          const result = {
+            averageCost: Math.round(avgCost),
+            averagePrice: Math.round(avgPrice),
+            medianCost: Math.round(avgCost), // Simplified
+            profitMargin: Math.round(profitMargin * 100) / 100,
+            productCount: validProducts.length,
+            note: `Tính toán từ ${validProducts.length} sản phẩm (fallback)`
+          };
+          
+          console.log('✅ [FRONTEND] Fallback calculation result:', result);
+          return result;
+        }
+      }
+    } catch (fallbackError) {
+      console.error('❌ [FRONTEND] Fallback calculation failed:', fallbackError);
+    }
+    
+    // Ultimate fallback
+    const fallbackResult = {
+      averageCost: 25000,
+      averagePrice: 45000,
+      medianCost: 22000,
+      profitMargin: 0.3,
+      productCount: 0,
+      note: "Sử dụng giá trị mặc định do lỗi backend"
+    };
+    
+    console.log('🔄 [FRONTEND] Using ultimate fallback:', fallbackResult);
+    return fallbackResult;
+  }
+};
+
+export const getProductCostStats = async () => {
+  try {
+    const response = await axios.get(`${API_URL}/products/cost-stats`);
+    return response.data;
+  } catch (error) {
+    console.error('Lỗi khi tải thống kê chi phí:', error);
+    return {
+      avgCost: 25000,
+      avgPrice: 45000,
+      profitMargin: 0.3
+    };
+  }
+};
+
+export const calculatePromotionBreakEven = async (buyX, getY) => {
+  try {
+    // Lấy dữ liệu cost thực tế từ API
+    const costStats = await getAverageProductCost();
+    
+    const avgCost = costStats.averageCost || 25000;
+    const avgPrice = costStats.averagePrice || 45000;
+    const targetMargin = costStats.profitMargin || 0.3;
+
+    // Tính toán break-even
+    const totalCost = (buyX + getY) * avgCost;
+    const breakEvenPrice = totalCost / (1 - targetMargin);
+    
+    // Đề xuất giá tối thiểu (đảm bảo lợi nhuận + hấp dẫn)
+    const recommendedPrice = Math.min(
+      breakEvenPrice * 1.1, // +10% so với break-even
+      avgPrice * buyX * 0.9 // -10% so với giá bán thông thường
+    );
+
+    return {
+      minOrderValue: Math.round(breakEvenPrice),
+      totalCost: Math.round(totalCost),
+      recommendedPrice: Math.round(recommendedPrice),
+      profitMargin: targetMargin,
+      avgProductCost: avgCost,
+      avgSellingPrice: avgPrice
+    };
+
+  } catch (error) {
+    console.error('Lỗi khi tính toán break-even:', error);
+    // Fallback calculation
+    const avgCost = 25000;
+    const avgPrice = 45000;
+    const targetMargin = 0.3;
+    const totalCost = (buyX + getY) * avgCost;
+    const breakEvenPrice = totalCost / (1 - targetMargin);
+    const recommendedPrice = Math.min(
+      breakEvenPrice * 1.1,
+      avgPrice * buyX * 0.9
+    );
+
+    return {
+      minOrderValue: Math.round(breakEvenPrice),
+      totalCost: Math.round(totalCost),
+      recommendedPrice: Math.round(recommendedPrice),
+      profitMargin: targetMargin,
+      avgProductCost: avgCost,
+      avgSellingPrice: avgPrice
+    };
   }
 };
