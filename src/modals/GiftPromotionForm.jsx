@@ -1,31 +1,40 @@
 // modals/GiftPromotionForm.jsx
 import React, { useState, useEffect } from 'react';
-import { Form, InputNumber, Select, DatePicker, Switch, Input, Row, Col, Alert, Spin, Button, Tooltip, message } from 'antd';
-import { GiftOutlined, InfoCircleOutlined, CalculatorOutlined, WarningOutlined } from '@ant-design/icons';
-import { fetchInventory, fetchOrders } from '../services/api';
+import { Form, InputNumber, Select, DatePicker, Switch, Input, Row, Col, Alert, Spin, Button, Tooltip, message, Card, Tag } from 'antd';
+import { GiftOutlined, InfoCircleOutlined, CalculatorOutlined, WarningOutlined, FireOutlined, BulbOutlined, StockOutlined } from '@ant-design/icons';
+import { fetchInventory, fetchOrders, fetchProducts, getAverageProductCost } from '../services/api';
 
 const { Option } = Select;
 const { TextArea } = Input;
 
 const GiftPromotionForm = ({ form }) => {
   const [inventoryItems, setInventoryItems] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedGift, setSelectedGift] = useState(null);
   const [orderStats, setOrderStats] = useState(null);
   const [minOrderWarning, setMinOrderWarning] = useState('');
   const [recommendedValue, setRecommendedValue] = useState(null);
+  const [applicableScope, setApplicableScope] = useState('all');
+  const [suggestions, setSuggestions] = useState(null);
+  const [costStats, setCostStats] = useState(null);
 
   // Load dữ liệu từ kho và thống kê đơn hàng
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
       try {
-        // Load inventory
-        const inventoryData = await fetchInventory();
+        // Load dữ liệu song song
+        const [inventoryData, ordersData, productsData, costData] = await Promise.all([
+          fetchInventory(),
+          fetchOrders(),
+          fetchProducts(),
+          getAverageProductCost()
+        ]);
         
-        // Load orders để tính giá trị đơn hàng trung bình
-        const orders = await fetchOrders();
-        calculateOrderStats(orders);
+        // Load inventory
+        calculateOrderStats(ordersData);
         
         // Lọc các items có thể dùng làm quà tặng
         const giftItems = inventoryData.filter(item => {
@@ -34,7 +43,39 @@ const GiftPromotionForm = ({ form }) => {
         });
         
         setInventoryItems(giftItems);
+
+        // Format products data
+        const formattedProducts = productsData.map(product => ({
+          id: product._id,
+          name: product.name,
+          code: product.code || `SP${product._id?.slice(-4)}`,
+          category: product.category,
+          sizes: product.sizes || [],
+          price: product.price || 0,
+          cost: product.sizes?.[0]?.cost || 0,
+          isPopular: determinePopularity(product)
+        }));
+        
+        setProducts(formattedProducts);
+        setCostStats(costData);
+
+        // Extract categories từ products
+        const uniqueCategories = [...new Set(productsData
+          .filter(p => p.category && p.category.trim() !== '')
+          .map(p => p.category)
+        )].sort();
+        
+        const formattedCategories = uniqueCategories.map((category, index) => ({
+          id: `cat_${index + 1}`,
+          name: category,
+        }));
+        
+        setCategories(formattedCategories);
+
         console.log('📦 Inventory items loaded:', giftItems.length);
+        console.log('📊 Products loaded:', formattedProducts.length);
+        console.log('🏷️ Categories loaded:', formattedCategories.length);
+
       } catch (error) {
         console.error('❌ Lỗi khi tải dữ liệu:', error);
       } finally {
@@ -54,8 +95,9 @@ const GiftPromotionForm = ({ form }) => {
   useEffect(() => {
     if (giftItemId && orderStats) {
       calculateRecommendedValue();
+      generateSuggestions();
     }
-  }, [giftItemId, giftQuantity, orderStats]);
+  }, [giftItemId, giftQuantity, orderStats, applicableScope]);
 
   useEffect(() => {
     if (minOrderValue && recommendedValue) {
@@ -63,56 +105,122 @@ const GiftPromotionForm = ({ form }) => {
     }
   }, [minOrderValue, recommendedValue]);
 
-  // Tính toán giá trị khuyến nghị - FIXED
-  const calculateRecommendedValue = () => {
-    if (!giftItemId || !orderStats) {
-      console.log('❌ Missing data for calculation:', { giftItemId, orderStats });
-      setRecommendedValue(null);
-      return;
-    }
+  // Hàm xác định sản phẩm bán chạy
+  const determinePopularity = (product) => {
+    const profitMargin = product.price > 0 && product.sizes?.[0]?.cost > 0 
+      ? (product.price - product.sizes[0].cost) / product.price 
+      : 0;
+    
+    return profitMargin > 0.3;
+  };
 
-    const selectedItem = inventoryItems.find(item => item._id === giftItemId);
-    if (!selectedItem) {
-      console.log('❌ Selected item not found:', giftItemId);
-      setRecommendedValue(null);
-      return;
-    }
+  // Tạo gợi ý thông minh
+  const generateSuggestions = () => {
+    if (!selectedGift || !orderStats) return;
 
-    const giftCost = getItemCost(selectedItem);
+    const giftCost = getItemCost(selectedGift);
     const currentGiftQuantity = giftQuantity || 1;
     const totalGiftCost = giftCost * currentGiftQuantity;
-    const avgOrderValue = orderStats.averageOrderValue;
 
-    console.log('🧮 Calculation inputs:', {
-      giftCost,
-      currentGiftQuantity,
-      totalGiftCost,
-      avgOrderValue
-    });
+    let suggestion = {
+      minOrderValue: recommendedValue,
+      message: '',
+      type: 'default',
+      basedOnRealData: true
+    };
 
-    // Tính hệ số an toàn
-    const giftCostRatio = totalGiftCost / avgOrderValue;
-    
-    let safetyFactor = 1.5;
-    if (giftCostRatio < 0.1) {
-      safetyFactor = 1.3;
-    } else if (giftCostRatio > 0.25) {
-      safetyFactor = 1.8;
+    const popularProducts = products.filter(p => p.isPopular);
+    const slowMovingProducts = products.filter(p => !p.isPopular && p.cost > 0);
+
+    switch (applicableScope) {
+      case 'all':
+        suggestion.message = `Áp dụng cho tất cả ${products.length} sản phẩm. Phù hợp cho chương trình khuyến mãi toàn cửa hàng.`;
+        suggestion.type = 'popular';
+        break;
+
+      case 'category':
+        if (popularProducts.length > 0) {
+          suggestion.message = `Áp dụng cho ${categories.length} danh mục bán chạy. Tập trung vào nhóm sản phẩm có lợi nhuận cao.`;
+          suggestion.type = 'popular';
+        } else {
+          suggestion.message = `Áp dụng cho ${categories.length} danh mục. Kích cầu toàn bộ danh mục sản phẩm.`;
+          suggestion.type = 'promotional';
+        }
+        break;
+
+      case 'specific':
+        if (slowMovingProducts.length > 0) {
+          const slowProductNames = slowMovingProducts.slice(0, 3).map(p => p.name).join(', ');
+          suggestion.message = `Áp dụng cho ${slowMovingProducts.length} sản phẩm tồn kho (${slowProductNames}${slowMovingProducts.length > 3 ? '...' : ''}). Giúp giải phóng tồn kho.`;
+          suggestion.type = 'clearance';
+        } else {
+          suggestion.message = `Áp dụng cho sản phẩm cụ thể. Lựa chọn linh hoạt theo chiến dịch marketing.`;
+          suggestion.type = 'targeted';
+        }
+        break;
     }
 
-    // Công thức tính toán
-    const calculatedValue = Math.round(avgOrderValue + (totalGiftCost * safetyFactor));
-    const finalRecommendedValue = Math.max(calculatedValue, Math.round(avgOrderValue * 1.1));
+    suggestion.message += ` Chi phí quà: ${totalGiftCost.toLocaleString()}đ.`;
 
-    console.log('✅ Recommended value calculated:', {
-      giftCostRatio: Math.round(giftCostRatio * 100) + '%',
-      safetyFactor,
-      calculatedValue,
-      finalRecommendedValue
+    setSuggestions(suggestion);
+  };
+
+  const handleScopeChange = (value) => {
+    setApplicableScope(value);
+    form.setFieldsValue({
+      applicableCategories: undefined,
+      applicableProducts: undefined
     });
 
-    setRecommendedValue(finalRecommendedValue);
+    generateSuggestions();
   };
+
+  // SỬA LẠI hàm calculateRecommendedValue
+const calculateRecommendedValue = () => {
+  if (!giftItemId || !orderStats) {
+    console.log('❌ Missing data for calculation:', { giftItemId, orderStats });
+    setRecommendedValue(null);
+    return;
+  }
+
+  const selectedItem = inventoryItems.find(item => item._id === giftItemId);
+  if (!selectedItem) {
+    console.log('❌ Selected item not found:', giftItemId);
+    setRecommendedValue(null);
+    return;
+  }
+
+  const giftCost = getItemCost(selectedItem);
+  const avgOrderValue = orderStats.averageOrderValue;
+
+  console.log('🧮 Calculation inputs:', {
+    giftCost,
+    avgOrderValue
+  });
+
+  // Tính hệ số an toàn - LUÔN tính cho 1 cái quà
+  const giftCostRatio = giftCost / avgOrderValue; // CHỈ tính 1 cái
+  
+  let safetyFactor = 1.5;
+  if (giftCostRatio < 0.1) {
+    safetyFactor = 1.3;
+  } else if (giftCostRatio > 0.25) {
+    safetyFactor = 1.8;
+  }
+
+  // Công thức tính toán - LUÔN tính cho 1 cái quà
+  const calculatedValue = Math.round(avgOrderValue + (giftCost * safetyFactor)); // CHỈ × giftCost
+  const finalRecommendedValue = Math.max(calculatedValue, Math.round(avgOrderValue * 1.1));
+
+  console.log('✅ Recommended value calculated:', {
+    giftCostRatio: Math.round(giftCostRatio * 100) + '%',
+    safetyFactor,
+    calculatedValue,
+    finalRecommendedValue
+  });
+
+  setRecommendedValue(finalRecommendedValue);
+};
 
   // Kiểm tra điều kiện đơn hàng tối thiểu
   const checkMinOrderCondition = () => {
@@ -204,6 +312,84 @@ const GiftPromotionForm = ({ form }) => {
     }
   };
 
+  // Hiển thị tên sản phẩm với size
+  const getProductDisplayName = (product) => {
+    let displayName = product.name;
+    
+    if (product.sizes && product.sizes.length > 0) {
+      const sizeNames = product.sizes.map(size => size.name).join(', ');
+      displayName += ` (${sizeNames})`;
+    } else if (product.price && product.price > 0) {
+      displayName += ` (${product.price.toLocaleString()}đ)`;
+    }
+    
+    if (product.category) {
+      displayName += ` - ${product.category}`;
+    }
+    
+    return displayName;
+  };
+
+  // Hiển thị thẻ gợi ý thông minh
+  const renderSmartSuggestions = () => {
+    if (!suggestions || loading || !selectedGift) return null;
+
+    const getIcon = () => {
+      switch (suggestions.type) {
+        case 'popular': return <FireOutlined />;
+        case 'promotional': return <BulbOutlined />;
+        case 'clearance': return <StockOutlined />;
+        default: return <BulbOutlined />;
+      }
+    };
+
+    const getColor = () => {
+      switch (suggestions.type) {
+        case 'popular': return 'success';
+        case 'promotional': return 'warning';
+        case 'clearance': return 'processing';
+        default: return 'info';
+      }
+    };
+
+    return (
+      <Card 
+        size="small" 
+        style={{ marginBottom: 16, borderLeft: `4px solid ${getColor() === 'success' ? '#52c41a' : getColor() === 'warning' ? '#faad14' : '#1890ff'}` }}
+        title={
+          <span>
+            {getIcon()} Gợi ý chiến lược
+            <Tag color={getColor()} style={{ marginLeft: 8 }}>
+              {suggestions.type === 'popular' ? 'Bán chạy' : 
+               suggestions.type === 'promotional' ? 'Khuyến mãi' : 
+               suggestions.type === 'clearance' ? 'Tồn kho' : 'Mục tiêu'}
+            </Tag>
+            {suggestions.basedOnRealData && (
+              <Tag color="green" style={{ marginLeft: 8 }}>Dữ liệu thực tế</Tag>
+            )}
+          </span>
+        }
+      >
+        <div style={{ lineHeight: 1.6 }}>
+          <p style={{ margin: 0, fontSize: '13px' }}>{suggestions.message}</p>
+          <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Tag icon={<GiftOutlined />} color="blue">
+              Quà: {selectedGift?.name}
+            </Tag>
+            <Tag icon={<InfoCircleOutlined />} color="green">
+              Giá trị: {getItemCost(selectedGift).toLocaleString()}đ × {giftQuantity || 1}
+            </Tag>
+            {recommendedValue && (
+              <Tag icon={<BulbOutlined />} color="orange">
+                Đơn tối thiểu: {recommendedValue.toLocaleString()}đ
+              </Tag>
+            )}
+          </div>
+        </div>
+      </Card>
+    );
+  };
+
   // Lấy số lượng thực tế từ item
   const getItemQuantity = (item) => {
     return item.stock || 0;
@@ -217,6 +403,8 @@ const GiftPromotionForm = ({ form }) => {
   return (
     <div>
       <Spin spinning={loading}>
+        {renderSmartSuggestions()}
+
         <Row gutter={[16, 0]}>
           <Col span={24}>
             <Form.Item
@@ -243,7 +431,7 @@ const GiftPromotionForm = ({ form }) => {
               >
                 {inventoryItems.map(item => (
                   <Option key={item._id} value={item._id}>
-                    {item.name} - Tồn: {getItemQuantity(item)} - Giá: {getItemCost(item).toLocaleString()}đ
+                    {item.name}
                   </Option>
                 ))}
               </Select>
@@ -313,6 +501,78 @@ const GiftPromotionForm = ({ form }) => {
               />
             </Form.Item>
           </Col>
+
+          {/* Phần Áp dụng cho - MỚI THÊM */}
+          <Col span={24}>
+            <Form.Item
+              name="applicableScope"
+              label="Áp dụng cho"
+              initialValue="all"
+              rules={[{ required: true, message: 'Vui lòng chọn phạm vi áp dụng' }]}
+            >
+              <Select
+                size="large"
+                placeholder="Chọn phạm vi áp dụng"
+                onChange={handleScopeChange}
+              >
+                <Option value="all">Toàn bộ sản phẩm</Option>
+                <Option value="category">Danh mục sản phẩm</Option>
+                <Option value="specific">Sản phẩm cụ thể</Option>
+              </Select>
+            </Form.Item>
+          </Col>
+
+          {/* Khi chọn Danh mục */}
+          {applicableScope === 'category' && (
+            <Col span={24}>
+              <Form.Item
+                name="applicableCategories"
+                label="Danh mục áp dụng"
+                rules={[{ required: true, message: 'Vui lòng chọn danh mục áp dụng' }]}
+              >
+                <Select
+                  mode="multiple"
+                  size="large"
+                  placeholder={categories.length === 0 ? "Không có danh mục nào" : "Chọn danh mục áp dụng"}
+                  allowClear
+                >
+                  {categories.map(category => (
+                    <Option key={category.id} value={category.name}>
+                      {category.name}
+                    </Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+          )}
+
+          {/* Khi chọn Sản phẩm cụ thể */}
+          {applicableScope === 'specific' && (
+            <Col span={24}>
+              <Form.Item
+                name="applicableProducts"
+                label="Sản phẩm áp dụng"
+                rules={[{ required: true, message: 'Vui lòng chọn sản phẩm áp dụng' }]}
+              >
+                <Select
+                  mode="multiple"
+                  size="large"
+                  placeholder="Chọn sản phẩm áp dụng"
+                  allowClear
+                  filterOption={(input, option) =>
+                    option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
+                  }
+                >
+                  {products.map(product => (
+                    <Option key={product.id} value={product.id}>
+                      {getProductDisplayName(product)}
+                      {product.isPopular && <Tag color="red" style={{ marginLeft: 8, fontSize: '10px' }}>Bán chạy</Tag>}
+                    </Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+          )}
 
           <Col span={24}>
             <Form.Item
@@ -446,7 +706,6 @@ const GiftPromotionForm = ({ form }) => {
               />
             </Form.Item>
           </Col>
-
           <Col span={24}>
             <Form.Item
               name="isActive"
@@ -465,5 +724,4 @@ const GiftPromotionForm = ({ form }) => {
     </div>
   );
 };
-
 export default GiftPromotionForm;

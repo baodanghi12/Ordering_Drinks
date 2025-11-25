@@ -64,20 +64,30 @@ const AddPromotionModal = ({
   useEffect(() => {
   if (visible) {
     if (editingPromotion) {
-      form.setFieldsValue({
+      // 🚨 ĐẢM BẢO LOAD ĐÚNG SCOPE FIELDS KHI EDIT
+      const editingData = {
         ...editingPromotion,
         promotionType: editingPromotion.promotionType || 'discount'
-      });
+      };
+      
+      // Xử lý các trường scope nếu là gift promotion
+      if (editingPromotion.promotionType === 'gift') {
+        editingData.applicableScope = editingPromotion.applicableScope || 'all';
+        editingData.applicableCategories = editingPromotion.applicableCategories || undefined;
+        editingData.applicableProducts = editingPromotion.applicableProducts || undefined;
+      }
+      
+      form.setFieldsValue(editingData);
       setPromotionType(editingPromotion.promotionType || 'discount');
     } else {
       form.resetFields();
       setCurrentStep(0);
       setPromotionType('discount');
       
-      // Đặt giá trị mặc định cho name và code
+      // Đặt giá trị mặc định
       const newCode = generateUniquePromoCode('discount');
       form.setFieldsValue({ 
-        name: 'Khuyến mãi giảm giá', // 🚨 QUAN TRỌNG
+        name: 'Khuyến mãi giảm giá',
         code: newCode,
         promotionType: 'discount',
         isActive: true
@@ -88,10 +98,11 @@ const AddPromotionModal = ({
 
 
   const handleCancel = () => {
-    form.resetFields();
-    setCurrentStep(0);
-    onCancel();
-  };
+  form.resetFields();
+  setCurrentStep(0);
+  setPromotionType('discount');
+  onCancel();
+};
 
   const handleRegenerateCode = () => {
     const newCode = generateUniquePromoCode(promotionType);
@@ -132,17 +143,36 @@ const AddPromotionModal = ({
   try {
     const values = await form.validateFields();
     
-    console.log("✅ Form values:", values);
+    
+    
+    // 🚨 CHUẨN BỊ DỮ LIỆU SCOPE CHO GIFT PROMOTION
+    let scopeData = {};
+    
+    if (values.promotionType === 'gift' || values.promotionType === 'discount') {
+      scopeData = {
+        applicableScope: values.applicableScope || 'all',
+        applicableCategories: values.applicableCategories || undefined,
+        applicableProducts: values.applicableProducts || undefined
+      };
+    }
     
     const payload = {
       ...values,
+      ...scopeData, // 🚨 THÊM SCOPE DATA
       promotionType: values.promotionType || 'discount',
       startDate: values.startDate ? values.startDate.toISOString() : new Date().toISOString(),
       endDate: values.endDate ? values.endDate.toISOString() : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       isActive: values.isActive !== undefined ? values.isActive : true
     };
 
-    console.log("📤 Final payload:", payload);
+    // 🚨 CLEAN UNDEFINED/NULL VALUES
+    Object.keys(payload).forEach(key => {
+      if (payload[key] === undefined || payload[key] === null) {
+        delete payload[key];
+      }
+    });
+
+   
     
     setLoading(true);
     
@@ -154,7 +184,6 @@ const AddPromotionModal = ({
       message.success("Tạo khuyến mãi thành công");
     }
     
-    // 🚨 SỬA: Dùng handleCancel thay vì onClose
     handleCancel();
     onSuccess();
   } catch (error) {
@@ -293,6 +322,10 @@ const renderStepContent = () => {
       <Form.Item name="promotionType" hidden noStyle>
         <Input />
       </Form.Item>
+      {/* 🚨 THÊM TRƯỜNG ẨN CHO applicableScope */}
+    <Form.Item name="applicableScope" hidden noStyle>
+      <Input />
+    </Form.Item>
       
       {/* Các form con sẽ tự động thừa hưởng giá trị name và code */}
       {promotionType === 'discount' && <DiscountPromotionForm form={form} />}

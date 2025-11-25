@@ -349,8 +349,6 @@ export const applyPromoCode = async (code, total, items = []) => {
 // 🎁 PROMOTIONS
 // =========================
 export const createPromotion = async (payload) => {
-  console.log('📡 [API] createPromotion called with payload:', payload);
-  console.log('📡 [API] Making POST request to:', `${API_URL}/promotion`);
   
   try {
     const res = await axios.post(`${API_URL}/promotion`, payload, {
