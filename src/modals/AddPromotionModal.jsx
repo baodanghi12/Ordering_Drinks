@@ -60,23 +60,35 @@ const AddPromotionModal = ({
 };
 
 
-  // Reset form khi mở modal
-  useEffect(() => {
+// Trong AddPromotionModal.jsx - CẬP NHẬT useEffect
+useEffect(() => {
   if (visible) {
     if (editingPromotion) {
-      // 🚨 ĐẢM BẢO LOAD ĐÚNG SCOPE FIELDS KHI EDIT
+      // 🚨 ĐẢM BẢO LOAD ĐÚNG SCOPE FIELDS KHI EDIT CHO CẢ GIFT
       const editingData = {
         ...editingPromotion,
         promotionType: editingPromotion.promotionType || 'discount'
       };
       
-      // Xử lý các trường scope nếu là gift promotion
-      if (editingPromotion.promotionType === 'gift') {
-        editingData.applicableScope = editingPromotion.applicableScope || 'all';
-        editingData.applicableCategories = editingPromotion.applicableCategories || undefined;
-        editingData.applicableProducts = editingPromotion.applicableProducts || undefined;
+      // Xử lý các trường scope cho tất cả loại promotion
+      editingData.applicableScope = editingPromotion.applicableScope || 'all';
+      editingData.applicableCategories = editingPromotion.applicableCategories || undefined;
+      
+      // 🚨 XỬ LÝ applicableProducts CHO CẢ DISCOUNT VÀ GIFT KHI EDIT (THEO SIZE)
+      if ((editingPromotion.promotionType === 'discount' || editingPromotion.promotionType === 'gift') && 
+          editingPromotion.applicableScope === 'specific' && 
+          editingPromotion.applicableProducts && 
+          Array.isArray(editingPromotion.applicableProducts)) {
+        
+        editingData.applicableProducts = editingPromotion.applicableProducts.map(item => {
+          // Tạo ID duy nhất: "productId_size"
+          return `${item.productId}_${item.size}`;
+        });
+      } else {
+        editingData.applicableProducts = undefined;
       }
       
+      console.log('📥 Editing data:', editingData);
       form.setFieldsValue(editingData);
       setPromotionType(editingPromotion.promotionType || 'discount');
     } else {
@@ -90,6 +102,7 @@ const AddPromotionModal = ({
         name: 'Khuyến mãi giảm giá',
         code: newCode,
         promotionType: 'discount',
+        applicableScope: 'all', // 🚨 THÊM DEFAULT SCOPE
         isActive: true
       });
     }
@@ -138,41 +151,85 @@ const AddPromotionModal = ({
   const handleBack = () => {
     setCurrentStep(0);
   };
+// 🚨 CẬP NHẬT HÀM XỬ LÝ TRƯỚC KHI SUBMIT
+const handleBeforeSubmit = (values) => {
+  let payload = {
+    name: values.name,
+    code: values.code,
+    description: values.description || '',
+    promotionType: values.promotionType || 'discount',
+    applicableScope: values.applicableScope || 'all',
+    minOrderValue: values.minOrderValue || 0,
+    startDate: values.startDate ? values.startDate.toISOString() : new Date().toISOString(),
+    endDate: values.endDate ? values.endDate.toISOString() : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    isActive: values.isActive !== undefined ? values.isActive : true
+  };
+
+  // 🚨 XỬ LÝ RIÊNG CHO TỪNG LOẠI PROMOTION
+  switch (values.promotionType) {
+    case 'discount':
+      payload = {
+        ...payload,
+        discountType: values.discountType,
+        discountValue: values.discountValue,
+        maxDiscount: values.maxDiscount,
+        applicableCategories: values.applicableCategories || undefined,
+        // 🚨 GIỮ NGUYÊN applicableProducts - BACKEND SẼ XỬ LÝ CHUYỂN ĐỔI
+        applicableProducts: values.applicableProducts || undefined
+      };
+      break;
+      
+    case 'buy_x_get_y':
+      payload = {
+        ...payload,
+        buyX: values.buyX,
+        getY: values.getY,
+        buyCategories: values.buyCategories || undefined,
+        getCategories: values.getCategories || undefined,
+        // 🚨 GIỮ NGUYÊN DỮ LIỆU SẢN PHẨM - BACKEND SẼ XỬ LÝ
+        buyProducts: values.buyProducts || undefined,
+        getProducts: values.getProducts || undefined,
+        applicableCategories: undefined,
+        applicableProducts: undefined
+      };
+      break;
+      
+    case 'gift':
+      payload = {
+        ...payload,
+        giftName: values.giftName,
+        giftQuantity: values.giftQuantity,
+        giftValue: values.giftValue,
+        applicableCategories: values.applicableCategories || undefined,
+        applicableProducts: values.applicableProducts || undefined
+      };
+      break;
+  }
+
+  // 🚨 CLEAN UNDEFINED/NULL VALUES
+  Object.keys(payload).forEach(key => {
+    if (payload[key] === undefined || payload[key] === null || payload[key] === '') {
+      delete payload[key];
+    }
+    // Xóa mảng rỗng
+    if (Array.isArray(payload[key]) && payload[key].length === 0) {
+      delete payload[key];
+    }
+  });
+
+  return payload;
+};
 
   const handleSubmit = async () => {
   try {
     const values = await form.validateFields();
     
+    console.log('📦 Form values:', values);
     
+    // 🚨 SỬ DỤNG HÀM XỬ LÝ TRƯỚC KHI SUBMIT
+    const payload = handleBeforeSubmit(values);
     
-    // 🚨 CHUẨN BỊ DỮ LIỆU SCOPE CHO GIFT PROMOTION
-    let scopeData = {};
-    
-    if (values.promotionType === 'gift' || values.promotionType === 'discount') {
-      scopeData = {
-        applicableScope: values.applicableScope || 'all',
-        applicableCategories: values.applicableCategories || undefined,
-        applicableProducts: values.applicableProducts || undefined
-      };
-    }
-    
-    const payload = {
-      ...values,
-      ...scopeData, // 🚨 THÊM SCOPE DATA
-      promotionType: values.promotionType || 'discount',
-      startDate: values.startDate ? values.startDate.toISOString() : new Date().toISOString(),
-      endDate: values.endDate ? values.endDate.toISOString() : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-      isActive: values.isActive !== undefined ? values.isActive : true
-    };
-
-    // 🚨 CLEAN UNDEFINED/NULL VALUES
-    Object.keys(payload).forEach(key => {
-      if (payload[key] === undefined || payload[key] === null) {
-        delete payload[key];
-      }
-    });
-
-   
+    console.log('🚀 Final payload:', payload);
     
     setLoading(true);
     
@@ -309,30 +366,59 @@ const renderStepContent = () => {
     );
   }
 
-  // 🚨 STEP 2: THÊM TRƯỜNG ẨN ĐỂ GIỮ GIÁ TRỊ
-  return (
-    <div>
-      {/* 🚨 QUAN TRỌNG: Trường ẩn để giữ giá trị từ step 0 */}
-      <Form.Item name="name" hidden noStyle>
-        <Input />
-      </Form.Item>
-      <Form.Item name="code" hidden noStyle>
-        <Input />
-      </Form.Item>
-      <Form.Item name="promotionType" hidden noStyle>
-        <Input />
-      </Form.Item>
-      {/* 🚨 THÊM TRƯỜNG ẨN CHO applicableScope */}
+  // 🚨 STEP 2: CẬP NHẬT TRƯỜNG ẨN
+return (
+  <div>
+    {/* 🚨 QUAN TRỌNG: Trường ẩn để giữ giá trị từ step 0 */}
+    <Form.Item name="name" hidden noStyle>
+      <Input />
+    </Form.Item>
+    <Form.Item name="code" hidden noStyle>
+      <Input />
+    </Form.Item>
+    <Form.Item name="promotionType" hidden noStyle>
+      <Input />
+    </Form.Item>
+    {/* 🚨 THÊM TRƯỜNG ẨN CHO applicableScope và các scope fields */}
     <Form.Item name="applicableScope" hidden noStyle>
       <Input />
     </Form.Item>
-      
-      {/* Các form con sẽ tự động thừa hưởng giá trị name và code */}
-      {promotionType === 'discount' && <DiscountPromotionForm form={form} />}
-      {promotionType === 'buy_x_get_y' && <BuyXGetYPromotionForm form={form} />}
-      {promotionType === 'gift' && <GiftPromotionForm form={form} />}
-    </div>
-  );
+    <Form.Item name="applicableCategories" hidden noStyle>
+      <Input />
+    </Form.Item>
+    <Form.Item name="applicableProducts" hidden noStyle>
+      <Input />
+    </Form.Item>
+    
+    {/* 🚨 THÊM TRƯỜNG ẨN CHO CÁC FIELD KHÁC ĐỂ ĐẢM BẢO KHÔNG MẤT DỮ LIỆU */}
+    <Form.Item name="discountType" hidden noStyle>
+      <Input />
+    </Form.Item>
+    <Form.Item name="discountValue" hidden noStyle>
+      <Input />
+    </Form.Item>
+    <Form.Item name="maxDiscount" hidden noStyle>
+      <Input />
+    </Form.Item>
+    <Form.Item name="minOrderValue" hidden noStyle>
+      <Input />
+    </Form.Item>
+    <Form.Item name="startDate" hidden noStyle>
+      <Input />
+    </Form.Item>
+    <Form.Item name="endDate" hidden noStyle>
+      <Input />
+    </Form.Item>
+    <Form.Item name="isActive" hidden noStyle>
+      <Input />
+    </Form.Item>
+    
+    {/* Các form con sẽ tự động thừa hưởng giá trị name và code */}
+    {promotionType === 'discount' && <DiscountPromotionForm form={form} initialData={editingPromotion} />}
+    {promotionType === 'buy_x_get_y' && <BuyXGetYPromotionForm form={form} initialData={editingPromotion} />}
+    {promotionType === 'gift' && <GiftPromotionForm form={form} initialData={editingPromotion} />}
+  </div>
+);
 };
 
   return (
@@ -342,11 +428,11 @@ const renderStepContent = () => {
         <span>
           {editingPromotion ? 'Sửa khuyến mãi' : 'Tạo khuyến mãi mới'}
         </span>
-        <Button 
+        {/* <Button 
           type="text" 
           icon={<CloseOutlined />} 
           onClick={handleCancel}
-        />
+        /> */}
       </div>
     }
     open={visible}

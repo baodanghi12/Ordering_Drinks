@@ -310,6 +310,35 @@ export const loadExpenses = async (start, end) => {
 
 // api.js - Thêm các functions còn thiếu
 // services/api.js - Thêm functions mới
+// 🚨 THÊM HÀM XỬ LÝ DỮ LIỆU KHI EDIT
+export const transformPromotionDataForEdit = (promotionData, products = []) => {
+  if (!promotionData) return promotionData;
+  
+  // 🚨 XỬ LÝ CHO BUY_X_GET_Y VỚI SẢN PHẨM CỤ THỂ
+  if (promotionData.promotionType === 'buy_x_get_y' && promotionData.applicableScope === 'specific') {
+    const transformed = { ...promotionData };
+    
+    // Chuyển đổi buyProducts từ object sang selected values
+    if (transformed.buyProducts && Array.isArray(transformed.buyProducts)) {
+      transformed.buyProducts = transformed.buyProducts.map(item => {
+        // Tạo ID duy nhất: "productId_size"
+        return `${item.productId}_${item.size}`;
+      });
+    }
+    
+    // Chuyển đổi getProducts từ object sang selected values
+    if (transformed.getProducts && Array.isArray(transformed.getProducts)) {
+      transformed.getProducts = transformed.getProducts.map(item => {
+        // Tạo ID duy nhất: "productId_size"
+        return `${item.productId}_${item.size}`;
+      });
+    }
+    
+    return transformed;
+  }
+  
+  return promotionData;
+};
 export const fetchPromotions = async (type = '') => {
   try {
     const url = type ? `${API_URL}/promotion?promotionType=${type}` : `${API_URL}/promotion`;
@@ -320,10 +349,18 @@ export const fetchPromotions = async (type = '') => {
     return [];
   }
 };
+// 🚨 CẬP NHẬT HÀM getPromotion ĐỂ XỬ LÝ DỮ LIỆU KHI EDIT
 export const getPromotion = async (id) => {
   try {
     const res = await axios.get(`${API_URL}/promotion/${id}`);
-    return res.data;
+    
+    // 🚨 TRANSFORM DATA CHO FRONTEND
+    const transformedData = transformPromotionDataForEdit(res.data.data);
+    
+    return {
+      ...res.data,
+      data: transformedData
+    };
   } catch (err) {
     console.error("Lỗi khi lấy chi tiết promotion:", err);
     throw err;
@@ -358,8 +395,7 @@ export const createPromotion = async (payload) => {
       timeout: 30000
     });
     
-    console.log('✅ [API] createPromotion success - Status:', res.status);
-    console.log('✅ [API] Response data:', res.data);
+    
     return res.data;
     
   } catch (error) {
@@ -589,3 +625,4 @@ export const calculatePromotionBreakEven = async (buyX, getY) => {
     };
   }
 };
+

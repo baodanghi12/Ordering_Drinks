@@ -50,8 +50,7 @@ const DiscountPromotionForm = ({ form }) => {
         
         setCategories(formattedCategories);
 
-        console.log('📊 Products loaded:', formattedProducts.length);
-        console.log('🏷️ Categories loaded:', formattedCategories.length);
+        
 
       } catch (error) {
         console.error('❌ Lỗi khi tải dữ liệu:', error);
@@ -67,7 +66,43 @@ const DiscountPromotionForm = ({ form }) => {
   useEffect(() => {
     generateSuggestions();
   }, [applicableScope, products, categories]);
+  // Hàm tạo options cho Select - PHIÊN BẢN MỚI CHO SIZE
+const renderProductOptions = (products, showSizes = true) => {
+  if (!showSizes) {
+    return products.map(product => (
+      <Option key={product.id} value={product.id}>
+        {getProductDisplayName(product)}
+        {product.isPopular && <Tag color="red" style={{ marginLeft: 8, fontSize: '10px' }}>Bán chạy</Tag>}
+      </Option>
+    ));
+  }
 
+  // 🚨 TẠO OPTIONS THEO TỪNG SIZE RIÊNG BIỆT
+  const options = [];
+  products.forEach(product => {
+    if (product.sizes && product.sizes.length > 0) {
+      product.sizes.forEach(size => {
+        const sizeId = `${product.id}_${size.name}`; // Tạo ID duy nhất cho mỗi size
+        options.push(
+          <Option key={sizeId} value={sizeId}>
+            {getProductDisplayName(product, size)} {/* 🚨 TRUYỀN SIZE VÀO ĐÂY */}
+            {product.isPopular && <Tag color="red" style={{ marginLeft: 8, fontSize: '10px' }}>Bán chạy</Tag>}
+            {!product.isPopular && <Tag color="orange" style={{ marginLeft: 8, fontSize: '10px' }}>Tồn kho</Tag>}
+          </Option>
+        );
+      });
+    } else {
+      // Fallback cho sản phẩm không có size
+      options.push(
+        <Option key={product.id} value={product.id}>
+          {getProductDisplayName(product)}
+          {product.isPopular && <Tag color="red" style={{ marginLeft: 8, fontSize: '10px' }}>Bán chạy</Tag>}
+        </Option>
+      );
+    }
+  });
+  return options;
+};
   // Hàm xác định sản phẩm bán chạy
   const determinePopularity = (product) => {
     const profitMargin = product.price > 0 && product.sizes?.[0]?.cost > 0 
@@ -171,24 +206,29 @@ const DiscountPromotionForm = ({ form }) => {
       </Card>
     );
   };
-
-  // Hiển thị tên sản phẩm với size
-  const getProductDisplayName = (product) => {
-    let displayName = product.name;
-    
-    if (product.sizes && product.sizes.length > 0) {
-      const sizeNames = product.sizes.map(size => size.name).join(', ');
-      displayName += ` (${sizeNames})`;
-    } else if (product.price && product.price > 0) {
-      displayName += ` (${product.price.toLocaleString()}đ)`;
-    }
-    
-    if (product.category) {
-      displayName += ` - ${product.category}`;
-    }
-    
-    return displayName;
-  };
+  // Thêm hàm này vào DiscountPromotionForm
+const handleFieldChange = () => {
+  // Có thể thêm logic xử lý khi field thay đổi nếu cần
+  console.log('Form values changed:', form.getFieldsValue());
+};
+  // Hiển thị tên sản phẩm với size - PHIÊN BẢN CẢI TIẾN
+const getProductDisplayName = (product, size = null) => {
+  if (size) {
+    // 🚨 HIỂN THỊ CHO TỪNG SIZE CỤ THỂ
+    return `${product.name} - Size ${size.name} `;
+  }
+  
+  // 🚨 HIỂN THỊ CHUNG CHO PRODUCT (CHO CÁC TRƯỜNG HỢP KHÁC)
+  let displayName = product.name;
+  if (product.sizes && product.sizes.length > 0) {
+    const sizeNames = product.sizes.map(size => size.name).join(', ');
+    displayName += ` (${sizeNames})`;
+  }
+  if (product.category) {
+    displayName += ` - ${product.category}`;
+  }
+  return displayName;
+};
 
   return (
     <div>
@@ -297,31 +337,28 @@ const DiscountPromotionForm = ({ form }) => {
 
           {/* Khi chọn Sản phẩm cụ thể */}
           {applicableScope === 'specific' && (
-            <Col span={24}>
-              <Form.Item
-                name="applicableProducts"
-                label="Sản phẩm áp dụng"
-                rules={[{ required: true, message: 'Vui lòng chọn sản phẩm áp dụng' }]}
-              >
-                <Select
-                  mode="multiple"
-                  size="large"
-                  placeholder="Chọn sản phẩm áp dụng"
-                  allowClear
-                  filterOption={(input, option) =>
-                    option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
-                  }
-                >
-                  {products.map(product => (
-                    <Option key={product.id} value={product.id}>
-                      {getProductDisplayName(product)}
-                      {product.isPopular && <Tag color="red" style={{ marginLeft: 8, fontSize: '10px' }}>Bán chạy</Tag>}
-                    </Option>
-                  ))}
-                </Select>
-              </Form.Item>
-            </Col>
-          )}
+  <Col span={24}>
+    <Form.Item
+      name="applicableProducts"
+      label="Sản phẩm áp dụng (theo size)"
+      rules={[{ required: true, message: 'Vui lòng chọn sản phẩm áp dụng' }]}
+      tooltip="Chọn sản phẩm cụ thể theo size để áp dụng khuyến mãi"
+    >
+      <Select
+        mode="multiple"
+        size="large"
+        placeholder="Chọn sản phẩm và size áp dụng"
+        allowClear
+        filterOption={(input, option) =>
+          option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
+        }
+        onChange={handleFieldChange} // 🚨 THÊM ONCHANGE
+      >
+        {renderProductOptions(products, true)}
+      </Select>
+    </Form.Item>
+  </Col>
+)}
 
           <Col span={24}>
             <Form.Item
