@@ -7,9 +7,10 @@ import { fetchInventory, fetchOrders, fetchProducts, getAverageProductCost } fro
 const { Option } = Select;
 const { TextArea } = Input;
 
-const GiftPromotionForm = ({ form }) => {
+const GiftPromotionForm = ({ form,  initialData }) => {
   const [inventoryItems, setInventoryItems] = useState([]);
   const [products, setProducts] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedGift, setSelectedGift] = useState(null);
@@ -83,7 +84,67 @@ const GiftPromotionForm = ({ form }) => {
 
     loadData();
   }, []);
+  // ✅ LOAD DATA KHI EDIT - SỬA LẠI
+useEffect(() => {
+  if (initialData && inventoryItems.length > 0) {
+    
+    
+    // VÌ KHÔNG CÓ giftProductId, chúng ta cần tìm quà tặng bằng giftName
+    if (initialData.giftName) {
+      
+      
+      // Tìm sản phẩm trong inventoryItems bằng tên
+      const selectedItem = inventoryItems.find(item => 
+        item.name && item.name.toLowerCase().includes(initialData.giftName.toLowerCase())
+      );
+      
+      if (selectedItem) {
+        
+        setSelectedGift(selectedItem);
+        
+        // Set giá trị cho form
+        setTimeout(() => {
+          const formValues = {
+            giftItemId: selectedItem._id, // Set ID của item tìm được
+            giftName: initialData.giftName,
+            giftQuantity: initialData.giftQuantity || 1,
+            giftValue: initialData.giftValue || getItemCost(selectedItem)
+          };
+          
+          
+          form.setFieldsValue(formValues);
+        }, 300);
+      } else {
+        
+        
+        // Nếu không tìm thấy, vẫn set các giá trị từ database
+        setTimeout(() => {
+          form.setFieldsValue({
+            giftName: initialData.giftName,
+            giftQuantity: initialData.giftQuantity || 1,
+            giftValue: initialData.giftValue || 0
+          });
+        }, 300);
+      }
+    } else {
+      console.log('❌ No giftName found in initialData');
+    }
+  }
+}, [initialData, inventoryItems, form]);
 
+// ✅ THÊM: Reset selectedGift khi inventoryItems thay đổi
+useEffect(() => {
+  if (initialData && initialData.giftName && inventoryItems.length > 0) {
+    const selectedItem = inventoryItems.find(item => 
+      item.name && item.name.toLowerCase().includes(initialData.giftName.toLowerCase())
+    );
+    if (selectedItem) {
+      setSelectedGift(selectedItem);
+    }
+  }
+}, [inventoryItems]);
+  
+  
   // Theo dõi các giá trị form
   const minOrderValue = Form.useWatch('minOrderValue', form);
   const giftValue = Form.useWatch('giftValue', form);
@@ -176,14 +237,14 @@ const GiftPromotionForm = ({ form }) => {
   // SỬA LẠI hàm calculateRecommendedValue
 const calculateRecommendedValue = () => {
   if (!giftItemId || !orderStats) {
-    console.log('❌ Missing data for calculation:', { giftItemId, orderStats });
+    
     setRecommendedValue(null);
     return;
   }
 
   const selectedItem = inventoryItems.find(item => item._id === giftItemId);
   if (!selectedItem) {
-    console.log('❌ Selected item not found:', giftItemId);
+    
     setRecommendedValue(null);
     return;
   }
@@ -191,10 +252,7 @@ const calculateRecommendedValue = () => {
   const giftCost = getItemCost(selectedItem);
   const avgOrderValue = orderStats.averageOrderValue;
 
-  console.log('🧮 Calculation inputs:', {
-    giftCost,
-    avgOrderValue
-  });
+  
 
   // Tính hệ số an toàn - LUÔN tính cho 1 cái quà
   const giftCostRatio = giftCost / avgOrderValue; // CHỈ tính 1 cái
@@ -210,12 +268,7 @@ const calculateRecommendedValue = () => {
   const calculatedValue = Math.round(avgOrderValue + (giftCost * safetyFactor)); // CHỈ × giftCost
   const finalRecommendedValue = Math.max(calculatedValue, Math.round(avgOrderValue * 1.1));
 
-  console.log('✅ Recommended value calculated:', {
-    giftCostRatio: Math.round(giftCostRatio * 100) + '%',
-    safetyFactor,
-    calculatedValue,
-    finalRecommendedValue
-  });
+  
 
   setRecommendedValue(finalRecommendedValue);
 };
@@ -272,13 +325,7 @@ const calculateRecommendedValue = () => {
 
     const averageOrderValue = validOrders > 0 ? totalRevenue / validOrders : 45000;
 
-    console.log('📊 Thống kê đơn hàng thực tế:', {
-      totalOrders: orders.length,
-      completedOrders: completedOrders.length,
-      validOrders: validOrders,
-      totalRevenue: Math.round(totalRevenue),
-      averageOrderValue: Math.round(averageOrderValue)
-    });
+    
 
     setOrderStats({
       averageOrderValue: Math.round(averageOrderValue),
@@ -288,27 +335,24 @@ const calculateRecommendedValue = () => {
     });
   };
 
-  // Xử lý khi chọn quà tặng
-  const handleGiftChange = (value) => {
-    const selectedItem = inventoryItems.find(item => item._id === value);
-    setSelectedGift(selectedItem);
+  // Xử lý khi chọn quà tặng - ĐẢM BẢO HÀM NÀY HOẠT ĐỘNG
+const handleGiftChange = (value) => {
+  
+  const selectedItem = inventoryItems.find(item => item._id === value);
+  setSelectedGift(selectedItem);
+  
+  if (selectedItem) {
+    const quantity = getItemQuantity(selectedItem);
+    const unitCost = getItemCost(selectedItem);
     
-    if (selectedItem) {
-      const quantity = getItemQuantity(selectedItem);
-      const unitCost = getItemCost(selectedItem);
-      
-      form.setFieldsValue({
-        giftQuantity: 1,
-        giftValue: unitCost
-      });
-      
-      form.setFieldsValue({
-        giftName: selectedItem.name
-      });
+    form.setFieldsValue({
+      giftQuantity: 1,
+      giftValue: unitCost,
+      giftName: selectedItem.name
+    });
 
-      console.log('🎁 Gift selected:', selectedItem.name, 'Cost:', unitCost);
-    }
-  };
+  }
+};
 
   const getProductDisplayName = (product, size = null) => {
   if (size) {
@@ -367,7 +411,7 @@ const renderProductOptions = (products, showSizes = true) => {
 
 // Thêm hàm xử lý khi field thay đổi
 const handleFieldChange = () => {
-  console.log('Form values changed:', form.getFieldsValue());
+  
 };
   // Hiển thị thẻ gợi ý thông minh
   const renderSmartSuggestions = () => {
@@ -447,34 +491,36 @@ const handleFieldChange = () => {
         <Row gutter={[16, 0]}>
           <Col span={24}>
             <Form.Item
-              name="giftItemId"
-              label="Chọn quà tặng từ kho"
-              rules={[{ required: true, message: 'Vui lòng chọn quà tặng từ kho' }]}
-            >
-              <Select
-                size="large"
-                placeholder={loading ? "Đang tải dữ liệu kho..." : "Chọn quà tặng từ kho..."}
-                onChange={handleGiftChange}
-                showSearch
-                filterOption={(input, option) =>
-                  option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
-                }
-                notFoundContent={
-                  loading ? 
-                    <Spin size="small" /> : 
-                    inventoryItems.length === 0 ? 
-                      "Không có quà tặng trong kho" : 
-                      "Không tìm thấy quà tặng"
-                }
-                allowClear
-              >
-                {inventoryItems.map(item => (
-                  <Option key={item._id} value={item._id}>
-                    {item.name}
-                  </Option>
-                ))}
-              </Select>
-            </Form.Item>
+  name="giftItemId"
+  label="Chọn quà tặng từ kho"
+  rules={[{ required: true, message: 'Vui lòng chọn quà tặng từ kho' }]}
+>
+  <Select
+    size="large"
+    placeholder={loading ? "Đang tải dữ liệu kho..." : "Chọn quà tặng từ kho..."}
+    onChange={handleGiftChange}
+    showSearch
+    filterOption={(input, option) =>
+      option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
+    }
+    notFoundContent={
+      loading ? 
+        <Spin size="small" /> : 
+        inventoryItems.length === 0 ? 
+          "Không có quà tặng trong kho" : 
+          "Không tìm thấy quà tặng"
+    }
+    allowClear
+    // ✅ HIỂN THỊ ĐÚNG GIÁ TRỊ KHI EDIT
+    value={selectedGift ? selectedGift._id : undefined}
+  >
+    {inventoryItems.map(item => (
+      <Option key={item._id} value={item._id}>
+        {item.name} {item.stock ? `(Tồn: ${item.stock})` : ''}
+      </Option>
+    ))}
+  </Select>
+</Form.Item>
           </Col>
 
           <Col span={24} style={{ display: 'none' }}>

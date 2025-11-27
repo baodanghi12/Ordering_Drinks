@@ -119,10 +119,7 @@ export const loadExportHistory = async (start, end) => {
     
     // ✅ LẤY TẤT CẢ (OUT- + RET-) để có thể so khớp
     const res = await fetchExportHistory(query);
-    console.log("🔍 DEBUG - Tất cả dữ liệu từ API:", res?.map(item => ({
-      invoiceId: item.invoiceId,
-      note: item.note
-    })));
+    
     
     return res || []; // ✅ TRẢ VỀ TẤT CẢ, không lọc
   } catch (err) {
@@ -187,11 +184,11 @@ export const fetchOrders = async () => {
 // ✅ Cập nhật trạng thái đơn hàng với log chi tiết
 export const updateOrderStatus = async (orderId, status) => {
   try {
-    console.log(`📞 [API] Gọi updateOrderStatus: ${orderId} -> ${status}`);
+    
     const response = await axios.put(`${API_URL}/orders/${orderId}/status`, {
       status: status
     });
-    console.log(`✅ [API] updateOrderStatus thành công: ${orderId} -> ${status}`);
+    
     return response.data;
   } catch (error) {
     console.error(`❌ [API] Lỗi updateOrderStatus: ${orderId} -> ${status}`, error);
@@ -206,12 +203,12 @@ export const updateOrderPayment = async (orderId, paymentMethod) => {
 // ✅ SỬA LẠI endpoint - dùng route orders thay vì inventory
 export const exportInventoryFromOrder = async (orderId, cartItems) => {
   try {
-    console.log(`📞 [API] Gọi exportInventoryFromOrder: ${orderId}`);
+    
     
     // ✅ SỬA ENDPOINT: /api/orders/:id/export-inventory
     const response = await axios.post(`${API_URL}/orders/${orderId}/export-inventory`);
     
-    console.log(`✅ [API] exportInventoryFromOrder thành công: ${orderId}`);
+    
     return response.data;
   } catch (error) {
     console.error(`❌ [API] Lỗi exportInventoryFromOrder: ${orderId}`, error);
@@ -247,7 +244,7 @@ export const fetchAllExportHistory = async (query = "") => {
   try {
     const res = await axios.get(`${API_URL}/inventory/export-history${query}`);
     const allData = res.data || [];
-    console.log("🧾 Tất cả phiếu xuất (OUT + RET):", allData.map(d => d.invoiceId));
+    
     return allData;
   } catch (error) {
     console.error("❌ Lỗi khi lấy toàn bộ export history:", error);
@@ -339,28 +336,30 @@ export const transformPromotionDataForEdit = (promotionData, products = []) => {
   
   return promotionData;
 };
-export const fetchPromotions = async (type = '') => {
+export const fetchPromotions = async (params = {}) => {
   try {
-    const url = type ? `${API_URL}/promotion?promotionType=${type}` : `${API_URL}/promotion`;
-    const res = await axios.get(url);
+    const res = await axios.get(`${API_URL}/promotion`, { params });
     return res.data;
   } catch (err) {
     console.error("Lỗi khi fetch promotions:", err);
-    return [];
+    // Fallback để component không bị lỗi
+    return {
+      success: false,
+      data: [],
+      pagination: {
+        page: 1,
+        limit: 10,
+        total: 0,
+        pages: 0
+      }
+    };
   }
 };
 // 🚨 CẬP NHẬT HÀM getPromotion ĐỂ XỬ LÝ DỮ LIỆU KHI EDIT
 export const getPromotion = async (id) => {
   try {
     const res = await axios.get(`${API_URL}/promotion/${id}`);
-    
-    // 🚨 TRANSFORM DATA CHO FRONTEND
-    const transformedData = transformPromotionDataForEdit(res.data.data);
-    
-    return {
-      ...res.data,
-      data: transformedData
-    };
+    return res.data;
   } catch (err) {
     console.error("Lỗi khi lấy chi tiết promotion:", err);
     throw err;
@@ -420,19 +419,26 @@ export const createPromotion = async (payload) => {
 };
 
 export const updatePromotion = async (id, payload) => {
-  console.log('📡 API - updatePromotion called:', id, payload);
   try {
-    const res = await axios.put(`${API_URL}/promotion/${id}`, payload, {
+    const res = await axios.put(`${API_URL}/promotion/${id}`, payload, { // ✅ ĐÚNG
       headers: { "Content-Type": "application/json" },
     });
-    console.log('✅ API - updatePromotion success:', res.data);
     return res.data;
   } catch (error) {
     console.error('❌ API - updatePromotion error:', error);
     throw error;
   }
 };
-
+// 🆕 Hàm check promo code
+export const checkPromoCode = async (code) => {
+  try {
+    const res = await axios.get(`${API_URL}/admin/promotions/check-code/${code}`);
+    return res.data;
+  } catch (err) {
+    console.error("Lỗi khi check promo code:", err);
+    throw err;
+  }
+};
 
 export const deletePromotion = async (id) => {
   try {
@@ -472,7 +478,7 @@ export const fetchCategories = async () => {
   try {
     // Lấy tất cả products để extract categories
     const products = await fetchProducts();
-    console.log('📦 Products data for categories:', products);
+    
     
     // Extract unique categories từ products
     const uniqueCategories = [...new Set(products
@@ -480,7 +486,8 @@ export const fetchCategories = async () => {
       .map(p => p.category)
     )].sort();
     
-    console.log('📂 Extracted categories:', uniqueCategories);
+    
+    
     
     // Format thành array objects
     const categories = uniqueCategories.map((category, index) => ({
@@ -500,9 +507,9 @@ export const fetchCategories = async () => {
 
 export const getAverageProductCost = async () => {
   try {
-    console.log('🔍 [FRONTEND] Gọi API /products/average-cost...');
+    
     const response = await axios.get(`${API_URL}/products/average-cost`);
-    console.log('✅ [FRONTEND] API response:', response.data);
+    
     return response.data;
   } catch (error) {
     console.error('❌ [FRONTEND] Lỗi chi tiết khi tải chi phí sản phẩm:');
@@ -512,7 +519,7 @@ export const getAverageProductCost = async () => {
     
     // Fallback với tính toán từ products
     try {
-      console.log('🔄 [FRONTEND] Thử tính toán từ products...');
+      
       const products = await fetchProducts();
       
       if (products && products.length > 0) {
@@ -537,7 +544,7 @@ export const getAverageProductCost = async () => {
             note: `Tính toán từ ${validProducts.length} sản phẩm (fallback)`
           };
           
-          console.log('✅ [FRONTEND] Fallback calculation result:', result);
+          
           return result;
         }
       }
@@ -555,7 +562,7 @@ export const getAverageProductCost = async () => {
       note: "Sử dụng giá trị mặc định do lỗi backend"
     };
     
-    console.log('🔄 [FRONTEND] Using ultimate fallback:', fallbackResult);
+    
     return fallbackResult;
   }
 };

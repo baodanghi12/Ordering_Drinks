@@ -1,4 +1,4 @@
-// components/promotions/Promotion.jsx
+// components/promotions/PromotionList.jsx
 import React, { useState, useEffect } from 'react';
 import { 
   Table, 
@@ -13,28 +13,22 @@ import {
 import { 
   PlusOutlined, 
   SearchOutlined,
-  ReloadOutlined,
-  EyeOutlined,
-  EditOutlined
+  ReloadOutlined
 } from '@ant-design/icons';
-import { fetchPromotions, deletePromotion, fetchProducts } from '../services/api'; // ✅ THÊM fetchProducts
-import PromotionView from '../components/promotions/PromotionView';
-import AddPromotionModal from '../modals/AddPromotionModal';
-import EditPromotionModal from '../modals/EditPromotionModal';
-import PromotionCard from '../components/promotions/PromotionCard';
+import { fetchPromotions, deletePromotion } from '../../services/api';
+import PromotionView from './PromotionView';
+import PromotionEdit from './PromotionEdit';
+import PromotionCard from './PromotionCard';
 
 const { Search } = Input;
 const { Option } = Select;
 
-const Promotion = () => {
+const PromotionList = () => {
   const [promotions, setPromotions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [viewModalVisible, setViewModalVisible] = useState(false);
-  const [addModalVisible, setAddModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [selectedPromotion, setSelectedPromotion] = useState(null);
-  const [products, setProducts] = useState([]);
-  
   const [filters, setFilters] = useState({
     search: '',
     status: '',
@@ -80,50 +74,6 @@ const Promotion = () => {
     }
   };
 
-  // ✅ SỬA LẠI: Load products với error handling
-  useEffect(() => {
-    const loadProducts = async () => {
-      try {
-        console.log('🔄 Starting to load products...');
-        const productsData = await fetchProducts();
-        console.log('📦 LOADED PRODUCTS:', productsData);
-        
-        if (productsData && Array.isArray(productsData)) {
-          console.log(`✅ Successfully loaded ${productsData.length} products`);
-          
-          // Phân tích cấu trúc products
-          productsData.forEach((product, index) => {
-            if (index < 3) { // Chỉ xem 3 sản phẩm đầu
-              console.log(`📦 Product ${index + 1}:`, {
-                name: product.name,
-                _id: product._id,
-                hasRootPrice: !!product.price,
-                rootPrice: product.price,
-                sizesCount: product.sizes?.length || 0,
-                firstSize: product.sizes?.[0] ? {
-                  name: product.sizes[0].name,
-                  price: product.sizes[0].price,
-                  cost: product.sizes[0].cost
-                } : 'No sizes'
-              });
-            }
-          });
-          
-          setProducts(productsData);
-        } else {
-          console.error('❌ Invalid products data structure:', productsData);
-          setProducts([]);
-        }
-      } catch (error) {
-        console.error('❌ Error loading products:', error);
-        message.error('Lỗi khi tải danh sách sản phẩm');
-        setProducts([]);
-      }
-    };
-    
-    loadProducts();
-  }, []);
-
   useEffect(() => {
     loadPromotions();
   }, [filters]);
@@ -138,13 +88,11 @@ const Promotion = () => {
     }
   };
 
-  // ✅ Xử lý tạo mới
   const handleCreate = () => {
     setSelectedPromotion(null);
-    setAddModalVisible(true);
+    setEditModalVisible(true);
   };
 
-  // ✅ Xử lý chỉnh sửa
   const handleEdit = (promotion) => {
     setSelectedPromotion(promotion);
     setEditModalVisible(true);
@@ -155,18 +103,14 @@ const Promotion = () => {
     setViewModalVisible(true);
   };
 
-  // ✅ Cập nhật hàm đóng modal
   const handleModalClose = () => {
     setViewModalVisible(false);
-    setAddModalVisible(false);
     setEditModalVisible(false);
     setSelectedPromotion(null);
   };
 
-  // ✅ Cập nhật hàm xử lý thành công
   const handleSuccess = () => {
     loadPromotions();
-    setAddModalVisible(false);
     setEditModalVisible(false);
     setSelectedPromotion(null);
   };
@@ -228,41 +172,49 @@ const Promotion = () => {
       ),
     },
     {
+      title: 'Sử dụng',
+      key: 'usage',
+      width: 100,
+      render: (_, record) => (
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#1890ff' }}>
+            {record.usageCount || 0}
+          </div>
+          <div style={{ fontSize: '12px', color: '#666' }}>lần dùng</div>
+        </div>
+      ),
+    },
+    {
       title: 'Thao tác',
       key: 'actions',
-      width: 160,
+      width: 120,
       render: (_, record) => (
-        <Space direction="vertical" style={{ width: '100%' }}>
-          <Button
-            type="primary"
-            icon={<EyeOutlined />}
-            onClick={() => handleView(record)}
-            size="small"
-            block
-          >
-            Xem
-          </Button>
-
-          <Button
-            icon={<EditOutlined />}
-            onClick={() => handleEdit(record)}
-            size="small"
-            block
-          >
-            Sửa
-          </Button>
-
-          <Button
-            danger
-            onClick={() => handleDelete(record._id)}
-            size="small"
-            block
-          >
-            Xóa
-          </Button>
+        <Space size="small" direction="vertical" style={{ width: '100%' }}>
+          <Tooltip title="Xem chi tiết">
+            <Button
+              type="link"
+              icon={<SearchOutlined />}
+              onClick={() => handleView(record)}
+              size="small"
+              style={{ width: '100%', justifyContent: 'flex-start' }}
+            >
+              Chi tiết
+            </Button>
+          </Tooltip>
+          <Tooltip title="Chỉnh sửa">
+            <Button
+              type="link"
+              icon={<PlusOutlined />}
+              onClick={() => handleEdit(record)}
+              size="small"
+              style={{ width: '100%', justifyContent: 'flex-start' }}
+            >
+              Sửa
+            </Button>
+          </Tooltip>
         </Space>
       ),
-    }
+    },
   ];
 
   return (
@@ -354,24 +306,15 @@ const Promotion = () => {
         }}
       />
 
-      {/* ✅ Modal thêm mới */}
-      <AddPromotionModal
-        visible={addModalVisible}
-        onCancel={() => setAddModalVisible(false)}
-        onSuccess={handleSuccess}
-      />
-
-      {/* ✅ Modal chỉnh sửa */}
-      <EditPromotionModal
+      {/* Modal chỉnh sửa */}
+      <PromotionEdit
         visible={editModalVisible}
-        editingPromotion={selectedPromotion}
-        onCancel={() => setEditModalVisible(false)}
+        promotion={selectedPromotion}
+        onClose={handleModalClose}
         onSuccess={handleSuccess}
-        products={products} // ✅ TRUYỀN products data xuống
-        productsLoading={loading}
       />
     </div>
   );
 };
 
-export default Promotion;
+export default PromotionList;
