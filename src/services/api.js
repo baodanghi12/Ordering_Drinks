@@ -369,7 +369,7 @@ export const getPromotion = async (id) => {
 // ✅ Cập nhật applyPromoCode để hỗ trợ buy_x_get_y
 export const applyPromoCode = async (code, total, items = []) => {
   try {
-    const res = await axios.post(`${API_URL}/promotion/apply-promo`, {
+     const res = await axios.post(`${API_URL}/promotion/apply`, { 
       code,
       total,
       items
