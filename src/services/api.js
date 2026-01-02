@@ -195,10 +195,86 @@ export const updateOrderStatus = async (orderId, status) => {
     throw error;
   }
 };
-// 🆕 Cập nhật paymentMethod
-export const updateOrderPayment = async (orderId, paymentMethod) => {
-  const res = await axios.put(`${API_URL}/orders/${orderId}/payment`, { paymentMethod });
-  return res.data;
+// Trong hàm updateOrderPayment - thêm các field cần thiết
+export const updateOrderPayment = async (orderId, paymentMethod, finalTotal, promoData = null) => {
+  try {
+    // 🚨 FIX: Tạo payload đúng format backend mong đợi
+    const payload = {
+      paymentMethod: String(paymentMethod).toLowerCase(),
+      finalTotal: Number(finalTotal),
+    };
+
+    // 🚨 FIX QUAN TRỌNG: Thêm promotionData nếu có
+    if (promoData) {
+      // Tạo promotionData chi tiết theo schema Order
+      const promotionData = {
+        code: promoData.code,
+        promotionId: promoData.promotionId,
+        promotionType: promoData.promotionType,
+        
+        // Chi tiết discount
+        ...(promoData.promotionType === 'discount' && {
+          discountType: promoData.discountType,
+          discountValue: promoData.discountValue,
+          discountAmount: promoData.discountAmount || 0,
+          maxDiscount: promoData.maxDiscount
+        }),
+        
+        // Chi tiết buy_x_get_y - QUAN TRỌNG!
+        ...(promoData.promotionType === 'buy_x_get_y' && {
+          buyX: promoData.buyX,
+          getY: promoData.getY,
+          freeItems: (promoData.freeItems || []).map(item => ({
+            productId: item.productId,
+            name: item.name,
+            size: item.size,
+            quantity: item.quantity,
+            price: item.price || 0,
+            cost: item.cost || 0
+          })),
+          qualifiedItems: [], // sẽ được tính ở backend
+          totalFreeValue: promoData.totalFreeValue || 0
+        }),
+        
+        // Chi tiết gift
+        ...(promoData.promotionType === 'gift' && {
+          giftName: promoData.giftName,
+          giftQuantity: promoData.giftQuantity,
+          giftValue: promoData.giftValue || 0
+        }),
+        
+        // Thông tin scope
+        applicableScope: promoData.applicableScope || 'all',
+        applicableCategories: promoData.applicableCategories || [],
+        applicableProducts: promoData.applicableProducts || [],
+        
+        // Thông tin hiệu quả
+        effectiveDiscountRate: promoData.effectiveDiscountRate || 0,
+        freeItemsCount: promoData.freeItems?.length || 0
+      };
+      
+      payload.promotionData = promotionData;
+    }
+
+    console.log('🔍 [API] updateOrderPayment payload:', JSON.stringify(payload, null, 2));
+    
+    const response = await axios.put(
+      `${API_URL}/orders/${orderId}/payment`, 
+      payload,
+      { headers: { "Content-Type": "application/json" } }
+    );
+    
+    console.log('✅ [API] Payment update response:', response.data);
+    return response.data;
+    
+  } catch (error) {
+    console.error('❌ [API] Error updating payment:', {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status
+    });
+    throw error;
+  }
 };
 // ✅ SỬA LẠI endpoint - dùng route orders thay vì inventory
 export const exportInventoryFromOrder = async (orderId, cartItems) => {
@@ -366,14 +442,48 @@ export const getPromotion = async (id) => {
   }
 };
 
-// ✅ Cập nhật applyPromoCode để hỗ trợ buy_x_get_y
+// services/api.js - CẬP NHẬT applyPromoCode
 export const applyPromoCode = async (code, total, items = []) => {
   try {
-     const res = await axios.post(`${API_URL}/promotion/apply`, { 
+    const res = await axios.post(`${API_URL}/promotion/apply`, { 
       code,
       total,
       items
     });
+    
+    // ✅ Bổ sung thêm thông tin chi tiết cho frontend
+    if (res.data.success) {
+      const promoData = res.data.data;
+      
+      // Tính toán thông tin hiệu quả
+      const originalTotal = total;
+      const finalTotal = promoData.finalTotal || total;
+      const savedAmount = originalTotal - finalTotal;
+      
+      return {
+        success: true,
+        data: {
+          ...promoData,
+          // ✅ Thêm thông tin chi tiết để lưu vào order
+          promotionEffect: {
+            originalSubtotal: originalTotal,
+            finalSubtotal: finalTotal,
+            discountPercentage: originalTotal > 0 
+              ? Math.round(((originalTotal - finalTotal) / originalTotal) * 10000) / 100 
+              : 0,
+            savedAmount: savedAmount,
+            effectiveDiscountRate: promoData.effectiveDiscountRate || 0
+          },
+          // ✅ Thông tin để tracking
+          trackingInfo: {
+            appliedAt: new Date(),
+            cartItemsCount: items.length,
+            cartTotal: total
+          }
+        }
+      };
+    }
+    
     return res.data;
   } catch (err) {
     console.error("Lỗi khi áp dụng promotion:", err);

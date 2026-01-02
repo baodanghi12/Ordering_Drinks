@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Card, InputNumber, Button, Radio, List, Tag, Input, message, Select, Spin, Tooltip } from "antd";
+import { Card, InputNumber, Button, Radio, List, Tag, Input, message, Select, Spin, Tooltip, Modal } from "antd";
 import { useLocation, useNavigate } from "react-router-dom";
 import { 
   updateOrderPayment, 
@@ -33,16 +33,30 @@ const Payment = () => {
 
   const { totalAmount = savedTotal, cart = savedCart } = location.state || {};
   const orderId = location.state?.orderId || localStorage.getItem("currentOrderId");
-  // ✅ THÊM ĐOẠN NÀY NGAY SAU DÒNG 62
-  useEffect(() => {
+  // Payment.jsx - CẬP NHẬT useEffect
+useEffect(() => {
+  const calculateAndSetTotals = () => {
     if (cart.length > 0) {
       const calculatedTotal = calculateTotalCost(cart);
-      setOriginalTotal(calculatedTotal);
-      setFinalTotal(calculatedTotal);
-      console.log("💰 Tổng tiền đơn hàng:", calculatedTotal);
-      console.log("📦 Cấu trúc cart:", JSON.stringify(cart, null, 2));
+      console.log("🛒 Cart items count:", cart.length);
+      console.log("💰 Calculated total from cart:", calculatedTotal);
+      console.log("🏷️ Saved total from localStorage:", savedTotal);
+      
+      // Ưu tiên sử dụng tính toán từ cart
+      const finalTotal = calculatedTotal > 0 ? calculatedTotal : (savedTotal || 0);
+      
+      console.log("🎯 Setting totals:", { original: finalTotal, final: finalTotal });
+      setOriginalTotal(finalTotal);
+      setFinalTotal(finalTotal);
+    } else {
+      console.log("⚠️ Cart is empty, using saved total:", savedTotal);
+      setOriginalTotal(savedTotal || 0);
+      setFinalTotal(savedTotal || 0);
     }
-  }, [cart]);
+  };
+  
+  calculateAndSetTotals();
+}, [cart]); // Chỉ phụ thuộc vào cart, không phụ thuộc vào savedTotal
   // ✅ Tính toán tổng tiền từ cart (bao gồm cả extras)
   const calculateTotalCost = (cartItems) => {
     return cartItems.reduce((sum, item) => {
@@ -63,9 +77,24 @@ const Payment = () => {
     }, 0);
   };
 
+// Payment.jsx - THÊM hàm mới
+const checkPromotionApplicabilityWithFallback = async (promotion, cartItems) => {
+  try {
+    // Lấy total từ state hoặc tính toán trực tiếp
+    let currentTotal = originalTotal;
+    if (currentTotal === 0 && cartItems.length > 0) {
+      currentTotal = calculateTotalCost(cartItems);
+      console.log(`🔧 Sử dụng fallback total: ${currentTotal}`);
+    }
+    
+    return await checkPromotionApplicability(promotion, cartItems, currentTotal);
+  } catch (error) {
+    console.error(`❌ Lỗi kiểm tra promotion với fallback:`, error);
+    return false;
+  }
+};
 
-
-  // ✅ Lấy danh sách mã khuyến mãi
+  // ✅ Lấy danh sách mã khuyến mái
   useEffect(() => {
     const loadAvailablePromotions = async () => {
   setLoadingPromotions(true);
@@ -78,25 +107,31 @@ const Payment = () => {
     if (response.success) {
       const promotions = response.data || [];
       
-      // 🆕 LỌC RA NHỮNG MÃ CÒN HIỆU LỰC (CHƯA HẾT HẠN)
+      // 🆕 LỌC RA NHỮNG MÃ CÒN HIỆU LỰC
       const now = new Date();
       const validPromotions = promotions.filter(promo => {
-        const startDate = new Date(promo.startDate); // ✅ THÊM DÒNG NÀY
+        const startDate = new Date(promo.startDate);
         const endDate = new Date(promo.endDate);
-        return startDate <= now && endDate >= now; // ✅ ĐÃ CÓ startDate
+        return startDate <= now && endDate >= now && promo.isActive;
       });
+      
+      console.log(`📊 Tổng số mã hợp lệ: ${validPromotions.length}`);
+      
+      // Tính toán total hiện tại
+      const currentTotal = originalTotal > 0 ? originalTotal : calculateTotalCost(cart);
       
       // Kiểm tra điều kiện áp dụng cho từng mã
       const checkedPromotions = await Promise.all(
         validPromotions.map(async (promo) => {
           try {
-            const isApplicable = await checkPromotionApplicability(promo, cart, originalTotal);
+            const isApplicable = await checkPromotionApplicability(promo, cart, currentTotal);
             return {
               ...promo,
               isApplicable,
-              disabledReason: isApplicable ? null : getDisabledReason(promo, cart, originalTotal)
+              disabledReason: isApplicable ? null : getDisabledReason(promo, cart, currentTotal)
             };
           } catch (error) {
+            console.error(`❌ Lỗi kiểm tra mã ${promo.code}:`, error);
             return {
               ...promo,
               isApplicable: false,
@@ -107,6 +142,7 @@ const Payment = () => {
       );
       
       setAvailablePromotions(checkedPromotions);
+      console.log(`✅ Đã tải ${checkedPromotions.length} mã khuyến mãi`);
     }
   } catch (error) {
     console.error("❌ Lỗi khi tải mã khuyến mãi:", error);
@@ -121,15 +157,22 @@ const Payment = () => {
     }
   }, [cart, originalTotal]);
 
-  // ✅ Hàm kiểm tra điều kiện áp dụng mã khuyến mãi
+// Payment.jsx - CẬP NHẬT checkPromotionApplicability để debug chi tiết
 const checkPromotionApplicability = async (promotion, cartItems, totalAmount) => {
   try {
+    console.log(`🔍 Kiểm tra mã: ${promotion.code}, loại: ${promotion.promotionType}`);
+    console.log(`🛒 Số lượng sản phẩm trong cart: ${cartItems.length}`);
+    console.log(`💰 Tổng tiền đơn hàng: ${totalAmount}`);
+    console.log(`📅 Thời gian hiện tại: ${new Date()}`);
+    console.log(`📅 Start date: ${new Date(promotion.startDate)}`);
+    console.log(`📅 End date: ${new Date(promotion.endDate)}`);
+    
     // Kiểm tra cơ bản
     const now = new Date();
     const startDate = new Date(promotion.startDate);
     const endDate = new Date(promotion.endDate);
     
-    // 1. Kiểm tra thời gian (BỎ COMMENT)
+    // 1. Kiểm tra thời gian
     if (now < startDate) {
       console.log(`❌ Mã ${promotion.code}: Chưa đến thời gian áp dụng (${startDate})`);
       return false;
@@ -146,7 +189,7 @@ const checkPromotionApplicability = async (promotion, cartItems, totalAmount) =>
       return false;
     }
     
-    // 3. Kiểm tra giá trị đơn hàng tối thiểu
+    // 3. Kiểm tra giá trị đơn hàng tối thiểu - FIX LỖI HIỂN THỊ
     const minOrderValue = promotion.minOrderValue || 0;
     console.log(`💰 Mã ${promotion.code}: Đơn hàng ${totalAmount} >= ${minOrderValue}?`);
     
@@ -314,10 +357,93 @@ const checkPromotionApplicability = async (promotion, cartItems, totalAmount) =>
   const qrImage = "https://res.cloudinary.com/drzyhqg1q/image/upload/v1759862613/n35pepabrqglambdjzcu.jpg";
   const change = Math.max(customerPay - finalTotal, 0);
 
- // File: Payment.jsx - trong hàm handleApplyPromoCode
+  // Payment.jsx - THÊM hàm debugBackendResponse (trước handleApplyPromoCode)
+
+const debugBackendResponse = (response, code, cart) => {
+  console.log("🔍 Debug backend response for code:", code);
+  console.log("📦 Full response:", response);
+  
+  let promoData = response.data || {};
+  
+  // Kiểm tra và fix dữ liệu nếu cần
+  if (promoData.promotionType === 'buy_x_get_y') {
+    console.log("🔄 Processing buy_x_get_y promotion...");
+    
+    // Lấy promotion details
+    const promotion = promoData.promotion || {};
+    const buyX = promotion.buyX || 2;
+    const getY = promotion.getY || 1;
+    
+    // Tính toán số lượng free items
+    const totalQuantity = cart.reduce((sum, item) => sum + (item.qty || 1), 0);
+    const freeTimes = Math.floor(totalQuantity / buyX);
+    const totalFreeItems = freeTimes * getY;
+    
+    console.log(`📊 Buy ${buyX} Get ${getY}: Total quantity=${totalQuantity}, Free items=${totalFreeItems}`);
+    
+    // Tạo free items nếu không có từ backend
+    if (totalFreeItems > 0 && (!promoData.freeItems || promoData.freeItems.length === 0)) {
+      console.log("🆕 Creating free items array...");
+      
+      let freeItems = [];
+      let totalFreeValue = 0;
+      
+      // Lấy sản phẩm áp dụng từ cart
+      const applicableItems = cart.filter(item => {
+        // Lọc theo scope
+        if (promotion.applicableScope === 'category') {
+          return promotion.applicableCategories?.includes(item.category);
+        } else if (promotion.applicableScope === 'specific') {
+          return promotion.applicableProducts?.some(p => 
+            p.productId === item.productId && p.size === item.size
+          );
+        }
+        return true; // Scope all
+      });
+      
+      if (applicableItems.length > 0) {
+        // Chọn item đầu tiên làm free item
+        const firstItem = applicableItems[0];
+        const itemPrice = firstItem.size?.cost || firstItem.price || 14000;
+        
+        freeItems = [{
+          productId: firstItem.productId || firstItem._id,
+          name: firstItem.name,
+          size: firstItem.size || 'M',
+          quantity: totalFreeItems,
+          price: itemPrice,
+          cost: firstItem.cost || firstItem.size?.cost || 9344,
+          isFree: true
+        }];
+        
+        totalFreeValue = itemPrice * totalFreeItems;
+        
+        console.log(`✅ Created free items:`, freeItems);
+        console.log(`💰 Total free value: ${totalFreeValue}`);
+        
+        // Cập nhật promoData
+        promoData = {
+          ...promoData,
+          buyX,
+          getY,
+          freeItems,
+          totalFreeValue,
+          // Cập nhật discount để tính toán giá trị tiết kiệm
+          discount: totalFreeValue, // Coi như discount
+          discountAmount: totalFreeValue,
+          // Giữ finalTotal không đổi
+          finalTotal: promoData.finalTotal || 56000
+        };
+      }
+    }
+  }
+  
+  console.log("🔄 Final promo data:", promoData);
+  return promoData;
+};
+// File: Payment.jsx - CẬP NHẬT handleApplyPromoCode với fallback
 const handleApplyPromoCode = async (code) => {
   if (!code) {
-    // Nếu chọn "-- Không áp dụng mã --"
     if (appliedPromo) {
       handleRemovePromoCode();
     }
@@ -329,9 +455,13 @@ const handleApplyPromoCode = async (code) => {
   try {
     const response = await applyPromoCode(code, originalTotal, cart);
     
-    // ✅ CẬP NHẬT: Backend trả về response.data chứa thông tin
     if (response.success) {
-      const promoData = response.data;
+      let promoData = response.data;
+      
+      console.log("📊 Promotion data từ backend:", promoData);
+      
+      // 🆕 Debug và fix dữ liệu nếu cần
+      promoData = debugBackendResponse(response, code, cart) || promoData;  // THÊM cart vào tham số
       
       // Xử lý theo promotionType
       if (promoData.promotionType === 'discount') {
@@ -344,13 +474,16 @@ const handleApplyPromoCode = async (code) => {
           discountAmount: discountAmount,
           discountPercent: promoData.discountType === 'percentage' ? promoData.discountValue : 0,
           description: `Giảm ${discountAmount.toLocaleString()}₫`,
-          promotionType: 'discount'
+          promotionType: 'discount',
+          promotionId: promoData.promotion?._id || promoData._id,
+          discountType: promoData.discountType,
+          discountValue: promoData.discountValue,
+          applicableScope: promoData.applicableScope || 'all'
         });
         
         message.success("Áp dụng mã khuyến mãi thành công!");
         
       } else if (promoData.promotionType === 'gift') {
-        // Xử lý gift promotion
         setAppliedPromo({
           code: code,
           discountAmount: 0,
@@ -358,37 +491,133 @@ const handleApplyPromoCode = async (code) => {
           description: `Tặng ${promoData.gift?.quantity || 1}x ${promoData.gift?.name}`,
           promotionType: 'gift',
           giftName: promoData.gift?.name,
-          giftQuantity: promoData.gift?.quantity
+          giftQuantity: promoData.gift?.quantity,
+          promotionId: promoData.promotion?._id || promoData._id,
+          applicableScope: promoData.applicableScope || 'all'
         });
         
-        setFinalTotal(originalTotal); // Tổng không đổi
+        setFinalTotal(originalTotal);
         message.success(`Áp dụng mã tặng quà: ${promoData.gift?.name}`);
         
       } else if (promoData.promotionType === 'buy_x_get_y') {
-        // Xử lý buy_x_get_y
-        setAppliedPromo({
-          code: code,
-          discountAmount: 0,
-          discountPercent: 0,
-          description: `Mua ${promoData.qualifiedItems} tặng ${promoData.freeItems} sản phẩm`,
-          promotionType: 'buy_x_get_y',
-          freeItems: promoData.freeItems
-        });
+  console.log("🎯 Processing buy_x_get_y in handleApplyPromoCode");
+  
+  // Sử dụng freeItems từ debugBackendResponse
+  const freeItems = promoData.freeItems || [];
+  const totalFreeValue = promoData.totalFreeValue || 0;
+  const buyX = promoData.buyX || promoData.promotion?.buyX || 2;
+  const getY = promoData.getY || promoData.promotion?.getY || 1;
+  
+  const totalQuantity = cart.reduce((sum, item) => sum + (item.qty || 1), 0);
+  const freeTimes = Math.floor(totalQuantity / buyX);
+  const totalFreeItems = freeTimes * getY;
+  
+  console.log(`📊 Final calculation: Buy ${buyX} Get ${getY}, Free items: ${totalFreeItems}, Value: ${totalFreeValue}`);
+  
+  // Tính toán giá trị tiết kiệm
+  const discountRate = originalTotal > 0 ? Math.round((totalFreeValue / originalTotal) * 100) : 0;
+  const avgPricePerItem = totalFreeValue > 0 ? originalTotal / (totalQuantity + totalFreeItems) : 0;
+  
+  // Set applied promo với đầy đủ thông tin
+  setAppliedPromo({
+    code: code,
+    discountAmount: 0, // Không giảm tiền trực tiếp
+    effectiveDiscountValue: totalFreeValue, // Giá trị giảm hiệu quả
+    discountPercent: 0,
+    description: `Mua ${buyX} tặng ${getY} - Tiết kiệm ${formatCurrency(totalFreeValue)} (${discountRate}%)`,
+    promotionType: 'buy_x_get_y',
+    freeItems: freeItems,
+    totalFreeValue: totalFreeValue,
+    promotionId: promoData.promotion?._id || promoData._id,
+    buyX: buyX,
+    getY: getY,
+    applicableScope: promoData.applicableScope || 'all',
+    // Thông tin tính toán
+    totalItems: totalQuantity,
+    totalFreeItems: totalFreeItems,
+    totalItemsReceived: totalQuantity + totalFreeItems,
+    effectiveDiscountRate: discountRate,
+    effectivePricePerItem: avgPricePerItem,
+    originalPricePerItem: totalQuantity > 0 ? originalTotal / totalQuantity : 0
+  });
+  
+  // KHÔNG thay đổi finalTotal
+  setFinalTotal(originalTotal);
+  
+  // 🟢 CẬP NHẬT MESSAGE SUCCESS Ở ĐÂY:
+  Modal.success({
+    title: `✅ Áp dụng mã "${code}" thành công!`,
+    content: (
+      <div style={{ marginTop: "16px" }}>
+        <div style={{ marginBottom: "12px", fontSize: "16px", color: "#1890ff" }}>
+          <strong>Chương trình: Mua {buyX} Tặng {getY}</strong>
+        </div>
         
-        setFinalTotal(originalTotal); // Tổng không đổi
-        message.success(`Áp dụng mã Mua ${promo.promotion?.buyX} Tặng ${promo.promotion?.getY} thành công!`);
+        <div style={{ 
+          backgroundColor: "#f6ffed", 
+          padding: "12px", 
+          borderRadius: "6px",
+          marginBottom: "12px"
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+            <span>Số lượng mua:</span>
+            <strong>{totalQuantity} sản phẩm</strong>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+            <span>Số lượng tặng:</span>
+            <strong style={{ color: "#52c41a" }}>{totalFreeItems} sản phẩm</strong>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+            <span>Tổng nhận được:</span>
+            <strong>{totalQuantity + totalFreeItems} sản phẩm</strong>
+          </div>
+        </div>
+        
+        <div style={{ 
+          backgroundColor: "#e6f7ff", 
+          padding: "12px", 
+          borderRadius: "6px",
+          borderLeft: "3px solid #1890ff"
+        }}>
+          <div style={{ color: "#0050b3", marginBottom: "8px" }}>
+            <strong>💎 Phân tích giá trị:</strong>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+            <span>Giá trị quà tặng:</span>
+            <strong style={{ color: "#52c41a" }}>{formatCurrency(totalFreeValue)}</strong>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+            <span>Tỷ lệ tiết kiệm:</span>
+            <strong style={{ color: "#fa541c" }}>{discountRate}%</strong>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+            <span>Giá gốc/sản phẩm:</span>
+            <strong>{formatCurrency(totalQuantity > 0 ? originalTotal / totalQuantity : 0)}</strong>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span>Giá sau KM/sản phẩm:</span>
+            <strong style={{ color: "#fa541c", fontSize: "1.1em" }}>
+              {formatCurrency(avgPricePerItem)}
+            </strong>
+          </div>
+        </div>
+      </div>
+    ),
+    okText: "Tuyệt vời!",
+    width: 500,
+    onOk() {
+      console.log("Đã xác nhận thông tin khuyến mãi");
+    }
+  });
+} else {
+        message.error("Loại khuyến mãi không được hỗ trợ");
       }
     } else {
       message.error(response.message || "Mã khuyến mãi không hợp lệ");
     }
   } catch (error) {
     console.error("❌ Lỗi khi áp dụng mã khuyến mãi:", error);
-    
-    // Hiển thị thông báo lỗi chi tiết hơn
-    const errorMessage = error.response?.data?.message || 
-                        error.message || 
-                        "Lỗi khi áp dụng mã khuyến mãi";
-    message.error(errorMessage);
+    message.error(error.response?.data?.message || error.message || "Lỗi khi áp dụng mã khuyến mãi");
   } finally {
     setApplyingPromo(false);
   }
@@ -420,45 +649,113 @@ const handleApplyPromoCode = async (code) => {
       throw error;
     }
   };
+// Payment.jsx - CẬP NHẬT handleConfirmPayments
+const handleConfirmPayment = async () => {
+  if (!orderId) {
+    alert("Không tìm thấy đơn hàng. Vui lòng tạo đơn hàng trước khi thanh toán!");
+    return;
+  }
 
-  const handleConfirmPayment = async () => {
-    if (!orderId) {
-      alert("Không tìm thấy đơn hàng. Vui lòng tạo đơn hàng trước khi thanh toán!");
-      return;
+  setLoading(true);
+
+  try {
+    // 🆕 BƯỚC 1: XUẤT KHO
+    await handleExportInventory();
+
+    // 🔹 BƯỚC 2: Chuẩn bị promotion data CHÍNH XÁC
+    let promotionData = null;
+    
+    if (appliedPromo) {
+      promotionData = {
+        code: appliedPromo.code,
+        promotionId: appliedPromo.promotionId,
+        promotionType: appliedPromo.promotionType,
+        applicableScope: appliedPromo.applicableScope || 'all',
+        effectiveDiscountRate: appliedPromo.effectiveDiscountRate || 0
+      };
+      
+      // Chi tiết theo loại promotion
+      if (appliedPromo.promotionType === 'discount') {
+        promotionData.discountType = appliedPromo.discountType;
+        promotionData.discountValue = appliedPromo.discountValue;
+        promotionData.discountAmount = appliedPromo.discountAmount || 0;
+      } 
+      else if (appliedPromo.promotionType === 'buy_x_get_y') {
+        promotionData.buyX = appliedPromo.buyX;
+        promotionData.getY = appliedPromo.getY;
+        
+        // 🚨 QUAN TRỌNG: Gửi freeItems với đầy đủ thông tin
+        if (appliedPromo.freeItems && appliedPromo.freeItems.length > 0) {
+          promotionData.freeItems = appliedPromo.freeItems.map(item => ({
+            productId: item.productId,
+            name: item.name,
+            size: item.size,
+            quantity: item.quantity,
+            price: item.price || 0,
+            cost: item.cost || 0
+          }));
+          promotionData.totalFreeValue = appliedPromo.totalFreeValue || 0;
+        }
+      }
+      else if (appliedPromo.promotionType === 'gift') {
+        promotionData.giftName = appliedPromo.giftName;
+        promotionData.giftQuantity = appliedPromo.giftQuantity;
+      }
     }
 
-    setLoading(true);
+    console.log("📤 Gửi promotion data đến backend:", promotionData);
 
-    try {
-      // 🆕 BƯỚC 1: XUẤT KHO
-      await handleExportInventory();
+    // 🔹 BƯỚC 3: Gọi API với tham số đúng thứ tự
+    await updateOrderPayment(
+      orderId,           // string
+      method,            // string: 'cash' hoặc 'transfer'
+      finalTotal,        // number
+      promotionData      // object hoặc null
+    );
+    
+    await updateOrderStatus(orderId, "paid");
 
-      // 🔹 BƯỚC 2: Cập nhật phương thức thanh toán và trạng thái
-      await updateOrderPayment(orderId, method);
-      await updateOrderStatus(orderId, "paid");
+    // 🔹 BƯỚC 4: Xóa dữ liệu tạm
+    localStorage.removeItem("cartData");
+    localStorage.removeItem("cartTotal");
+    localStorage.removeItem("currentOrderId");
 
-      // 🔹 BƯỚC 3: Xóa dữ liệu tạm
-      localStorage.removeItem("cartData");
-      localStorage.removeItem("cartTotal");
-      localStorage.removeItem("currentOrderId");
+    console.log("✅ Thanh toán thành công!");
+    console.log("📊 Chi tiết order:", {
+      orderId,
+      originalTotal,
+      finalTotal,
+      promotionType: appliedPromo?.promotionType || "none",
+      promoCode: appliedPromo?.code || "Không có",
+      savedAmount: originalTotal - finalTotal,
+      freeItemsCount: appliedPromo?.freeItems?.length || 0
+    });
 
-      setShowSuccess(true);
-      setTimeout(() => {
-        setShowSuccess(false);
-        navigate("/order", { replace: true });
-      }, 2000);
-    } catch (error) {
-      console.error("❌ Lỗi khi xác nhận thanh toán:", error);
-      alert("Lỗi khi xác nhận thanh toán: " + error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+    setShowSuccess(true);
+    setTimeout(() => {
+      setShowSuccess(false);
+      navigate("/order", { replace: true });
+    }, 2000);
+  } catch (error) {
+    console.error("❌ Lỗi khi xác nhận thanh toán:", error);
+    console.error("📋 Error details:", error.response?.data);
+    
+    // Hiển thị thông báo chi tiết hơn
+    const errorMessage = error.response?.data?.message || error.message || "Lỗi không xác định";
+    alert(`Lỗi khi xác nhận thanh toán: ${errorMessage}`);
+  } finally {
+    setLoading(false);
+  }
+};
 
-  // 🆕 HÀM ĐỊNH DẠNG TIỀN
-  const formatCurrency = (amount) => {
-    return amount.toLocaleString("vi-VN") + " ₫";
-  };
+ // 📍 Vị trí: Thay thế hàm formatCurrency hiện tại
+// 🆕 HÀM ĐỊNH DẠNG TIỀN - AN TOÀN
+const formatCurrency = (amount) => {
+  if (amount === undefined || amount === null || isNaN(amount)) {
+    return "0 ₫";
+  }
+  return amount.toLocaleString("vi-VN") + " ₫";
+};
 
   // 🆕 RENDER GIFT THÔNG TIN
   const renderGiftInfo = () => {
@@ -625,55 +922,179 @@ const handleApplyPromoCode = async (code) => {
           }}
         />
 
-        {/* Tổng tiền */}
+{/* Tổng tiền */}
+<div style={{ 
+  marginTop: "16px", 
+  paddingTop: "16px", 
+  borderTop: "1px solid #f0f0f0",
+}}>
+  {/* Hiển thị cho buy_x_get_y */}
+  {appliedPromo?.promotionType === 'buy_x_get_y' && appliedPromo?.totalFreeValue > 0 && (
+    <>
+      <div style={{ 
+        display: "flex", 
+        justifyContent: "space-between",
+        marginBottom: "8px",
+        color: "#52c41a"
+      }}>
+        <div>Quà tặng (giá trị):</div>
+        <div style={{ fontWeight: 600 }}>
+          -{formatCurrency(appliedPromo.totalFreeValue)}
+        </div>
+      </div>
+      
+      <div style={{ 
+        display: "flex", 
+        justifyContent: "space-between",
+        marginBottom: "8px",
+        color: "#fa541c",
+        fontSize: "0.9rem"
+      }}>
+        <div>Tỷ lệ giảm giá:</div>
+        <div style={{ fontWeight: 600 }}>
+          {Math.round(appliedPromo.effectiveDiscountRate || 0)}%
+        </div>
+      </div>
+    </>
+  )}
+  
+  {/* Hiển thị cho discount thông thường */}
+  {appliedPromo?.promotionType === 'discount' && appliedPromo.discountAmount > 0 && (
+    <div style={{ 
+      display: "flex", 
+      justifyContent: "space-between",
+      marginBottom: "8px",
+      color: "#fa541c"
+    }}>
+      <div>Giảm giá:</div>
+      <div style={{ fontWeight: 600 }}>
+        {appliedPromo.discountAmount > 0 
+          ? `-${formatCurrency(appliedPromo.discountAmount)}`
+          : appliedPromo.discountPercent > 0 
+            ? `-${appliedPromo.discountPercent}%`
+            : ""
+        }
+      </div>
+    </div>
+  )}
+  
+  {/* Tổng tiền thực tế */}
+  <div style={{ 
+    display: "flex", 
+    justifyContent: "space-between",
+    alignItems: "center",
+    fontWeight: 700,
+    fontSize: "1.1rem",
+    marginTop: "12px",
+    paddingTop: "12px",
+    borderTop: "1px solid #eee"
+  }}>
+    <div>Thành tiền:</div>
+    <div style={{ 
+      color: "#1890ff", 
+      fontSize: "1.2rem",
+      textAlign: "right"
+    }}>
+      <div>{formatCurrency(finalTotal)}</div>
+      
+      {/* Hiển thị giá trị tiết kiệm */}
+      {(appliedPromo?.discountAmount > 0 || appliedPromo?.totalFreeValue > 0) && (
         <div style={{ 
-          marginTop: "16px", 
-          paddingTop: "16px", 
-          borderTop: "1px solid #f0f0f0",
+          fontSize: "0.85rem", 
+          color: "#999",
+          fontWeight: "normal",
+          marginTop: "2px"
         }}>
-          {appliedPromo && (
-            <div style={{ 
-              display: "flex", 
-              justifyContent: "space-between",
-              marginBottom: "8px",
-              color: "#fa541c"
-            }}>
-              <div>Giảm giá:</div>
-              <div style={{ fontWeight: 600 }}>
-                {appliedPromo.discountAmount > 0 
-                  ? `-${formatCurrency(appliedPromo.discountAmount)}`
-                  : `-${appliedPromo.discountPercent}%`
-                }
+          <div>
+            <span style={{ color: "#52c41a" }}>💎 Tiết kiệm: </span>
+            {formatCurrency(
+              (appliedPromo?.discountAmount || 0) + 
+              (appliedPromo?.totalFreeValue || 0)
+            )}
+            {appliedPromo?.promotionType === 'buy_x_get_y' && (
+              <span> (Tặng {appliedPromo.totalFreeItems} sản phẩm)</span>
+            )}
+          </div>
+          
+          {/* Hiển thị giá trị trung bình cho buy_x_get_y */}
+          {appliedPromo?.promotionType === 'buy_x_get_y' && (
+            <div style={{ marginTop: "4px", color: "#666" }}>
+              Giá trung bình: {formatCurrency(appliedPromo.effectivePricePerItem || 0)}/sản phẩm
+              <div style={{ fontSize: "0.8rem", color: "#888" }}>
+                (Mua {appliedPromo.totalItems} + Tặng {appliedPromo.totalFreeItems} = {appliedPromo.totalItemsReceived} sản phẩm)
               </div>
             </div>
           )}
           
-          <div style={{ 
-            display: "flex", 
-            justifyContent: "space-between",
-            alignItems: "center",
-            fontWeight: 700,
-            fontSize: "1.1rem"
-          }}>
-            <div>Thành tiền:</div>
-            <div style={{ color: "#1890ff", fontSize: "1.2rem" }}>
-              {formatCurrency(finalTotal)}
-            </div>
-          </div>
-          
-          {appliedPromo && (
-            <div style={{ 
-              marginTop: "4px", 
-              fontSize: "0.85rem", 
-              color: "#999",
-              textAlign: "right"
-            }}>
-              (Giá gốc: {formatCurrency(originalTotal)})
-            </div>
-          )}
+          <div style={{ marginTop: "4px" }}>Giá gốc: {formatCurrency(originalTotal)}</div>
         </div>
+      )}
+    </div>
+  </div>
+</div>
       </Card>
-
+          {/* Hiển thị sản phẩm được tặng nếu có */}
+{appliedPromo?.freeItems && appliedPromo.freeItems.length > 0 && (
+  <div style={{
+    marginTop: "16px",
+    padding: "12px",
+    backgroundColor: "#f0f9ff",
+    border: "1px solid #91d5ff",
+    borderRadius: "8px"
+  }}>
+    <div style={{ 
+      display: "flex", 
+      alignItems: "center", 
+      gap: "8px",
+      marginBottom: "8px" 
+    }}>
+      <span style={{ color: "#1890ff" }}>🎁</span>
+      <strong>Sản phẩm được tặng:</strong>
+      <span style={{ 
+        marginLeft: "auto", 
+        fontSize: "0.9rem", 
+        color: "#52c41a",
+        fontWeight: "600"
+      }}>
+        Tiết kiệm {formatCurrency(appliedPromo.totalFreeValue || 0)}
+      </span>
+    </div>
+    
+    {/* ... phần List freeItems giữ nguyên ... */}
+    
+    <div style={{ 
+      marginTop: "12px", 
+      padding: "10px",
+      backgroundColor: "#e6f7ff",
+      borderRadius: "6px",
+      borderLeft: "3px solid #1890ff"
+    }}>
+      <div style={{ fontSize: "0.9rem", color: "#0050b3", marginBottom: "6px" }}>
+        <strong>📊 Phân tích giá trị:</strong>
+      </div>
+      
+      <div style={{ fontSize: "0.85rem", color: "#262626" }}>
+        <div>• <strong>Tổng chi phí:</strong> {formatCurrency(finalTotal)}</div>
+        <div>• <strong>Số lượng mua:</strong> {appliedPromo.totalItems || 0} sản phẩm</div>
+        <div>• <strong>Số lượng tặng:</strong> {appliedPromo.totalFreeItems || 0} sản phẩm</div>
+        <div>• <strong>Tổng nhận được:</strong> {appliedPromo.totalItemsReceived || 0} sản phẩm</div>
+        
+        <div style={{ 
+          marginTop: "6px", 
+          paddingTop: "6px", 
+          borderTop: "1px dashed #91d5ff",
+          color: "#fa541c",
+          fontWeight: "500"
+        }}>
+          • <strong>Giá trị mỗi sản phẩm:</strong> {formatCurrency(appliedPromo.effectivePricePerItem || 0)}
+          <span style={{ fontSize: "0.8rem", color: "#8c8c8c", marginLeft: "6px" }}>
+            (giảm {Math.round(100 - ((appliedPromo.effectivePricePerItem || 0) / (originalTotal / (appliedPromo.totalItems || 1))) * 100)}%)
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
       {/* 🆕 CARD ÁP DỤNG MÃ KHUYẾN MÃI DƯỚI DẠNG SELECT */}
       <Card
         title="Áp dụng mã khuyến mãi"
@@ -742,39 +1163,70 @@ const handleApplyPromoCode = async (code) => {
             </div>
 
             {/* Thông tin mã khuyến mãi đã áp dụng */}
-            {appliedPromo && (
-              <div style={{
-                padding: "12px",
-                backgroundColor: "#f6ffed",
-                border: "1px solid #b7eb8f",
-                borderRadius: "8px",
-                marginBottom: "16px"
+{appliedPromo && (
+  <div style={{
+    padding: "12px",
+    backgroundColor: appliedPromo.promotionType === 'buy_x_get_y' ? "#f0f9ff" : "#f6ffed",
+    border: appliedPromo.promotionType === 'buy_x_get_y' ? "1px solid #91d5ff" : "1px solid #b7eb8f",
+    borderRadius: "8px",
+    marginBottom: "16px"
+  }}>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div>
+        <Tag color={
+          appliedPromo.promotionType === 'buy_x_get_y' ? "blue" : 
+          appliedPromo.promotionType === 'gift' ? "orange" : "success"
+        }>
+          {appliedPromo.promotionType === 'buy_x_get_y' ? "Mua X Tặng Y" :
+           appliedPromo.promotionType === 'gift' ? "Quà tặng" : "Đã áp dụng"}
+        </Tag>
+        <span style={{ marginLeft: "8px", fontWeight: 600 }}>{appliedPromo.code}</span>
+      </div>
+      <Button
+        type="link"
+        danger
+        size="small"
+        onClick={handleRemovePromoCode}
+      >
+        Xoá
+      </Button>
+    </div>
+    
+    {appliedPromo.description && (
+      <div style={{ marginTop: "8px", fontSize: "0.9rem", color: "#666" }}>
+        {appliedPromo.description}
+        
+        {/* Hiển thị thêm thông tin cho buy_x_get_y */}
+        {appliedPromo.promotionType === 'buy_x_get_y' && appliedPromo.freeItems && (
+          <div style={{ 
+            marginTop: "8px", 
+            padding: "8px", 
+            backgroundColor: "rgba(145, 213, 255, 0.1)",
+            borderRadius: "4px"
+          }}>
+            <strong>🎁 Sản phẩm được tặng:</strong>
+            {appliedPromo.freeItems.map((item, idx) => (
+              <div key={idx} style={{ 
+                marginTop: "4px", 
+                fontSize: "0.85rem",
+                display: "flex", 
+                justifyContent: "space-between" 
               }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div>
-                    <Tag color="success">Đã áp dụng</Tag>
-                    <span style={{ marginLeft: "8px", fontWeight: 600 }}>{appliedPromo.code}</span>
-                  </div>
-                  <Button
-                    type="link"
-                    danger
-                    size="small"
-                    onClick={handleRemovePromoCode}
-                  >
-                    Xoá
-                  </Button>
-                </div>
-                
-                {appliedPromo.description && (
-                  <div style={{ marginTop: "8px", fontSize: "0.9rem", color: "#666" }}>
-                    {appliedPromo.description}
-                  </div>
-                )}
-                
-                {/* Hiển thị thông tin quà tặng nếu có */}
-                {renderGiftInfo()}
+                <span>{item.name} × {item.quantity}</span>
+                <span style={{ color: "#52c41a" }}>
+                  -{formatCurrency(item.price * item.quantity)}
+                </span>
               </div>
-            )}
+            ))}
+          </div>
+        )}
+      </div>
+    )}
+    
+    {/* Hiển thị thông tin quà tặng nếu có */}
+    {renderGiftInfo()}
+  </div>
+)}
 
             {/* Thống kê mã khuyến mãi */}
             <div style={{ 
