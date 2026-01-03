@@ -277,17 +277,28 @@ export const updateOrderPayment = async (orderId, paymentMethod, finalTotal, pro
   }
 };
 // ✅ SỬA LẠI endpoint - dùng route orders thay vì inventory
-export const exportInventoryFromOrder = async (orderId, cartItems) => {
+export const exportInventoryFromOrder = async (orderId, cartItems, freeItems = []) => {
   try {
-    
-    
-    // ✅ SỬA ENDPOINT: /api/orders/:id/export-inventory
-    const response = await axios.post(`${API_URL}/orders/${orderId}/export-inventory`);
-    
+    console.log("🔄 [API] Gọi xuất kho với:", {
+      orderId,
+      cartItemsCount: cartItems?.length || 0,
+      freeItemsCount: freeItems?.length || 0
+    });
+
+    const response = await axios.post(
+      `${API_URL}/orders/${orderId}/export-inventory`, 
+      {
+        cartItems: cartItems || [],      // 🆕 THÊM cartItems
+        freeItems: freeItems || []       // 🆕 THÊM freeItems
+      },
+      {
+        headers: { "Content-Type": "application/json" }
+      }
+    );
     
     return response.data;
   } catch (error) {
-    console.error(`❌ [API] Lỗi exportInventoryFromOrder: ${orderId}`, error);
+    console.error(`❌ [API] Lỗi exportInventoryFromOrder:`, error);
     throw error;
   }
 };
