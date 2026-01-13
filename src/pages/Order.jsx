@@ -201,25 +201,35 @@ const handlePlaceOrder = async () => {
     };
     // 🔹 THÊM DEBUG ĐỂ KIỂM TRA
     console.log("🚀 Payload gửi lên server:", JSON.stringify(payload, null, 2));
+    
+    //đâsdasda
     const orderResult = await createOrder(payload);
 
-    // Lưu orderId và dữ liệu giỏ hàng để sử dụng ở trang thanh toán
-    localStorage.setItem("currentOrderId", orderResult._id);
-    localStorage.setItem("cartData", JSON.stringify(cart));
-    localStorage.setItem("cartTotal", cartTotal.toString());
+// ✅ LẤY ĐÚNG orderId TỪ BACKEND
+const orderId = orderResult?.order?._id;
 
-    console.log(`📝 Đã tạo đơn hàng #${orderResult._id}, chuyển đến thanh toán`);
+if (!orderId) {
+  console.error("❌ Không nhận được orderId từ backend:", orderResult);
+  message.error("Tạo đơn thất bại (không có orderId)");
+  return;
+}
 
-    message.success("Tạo đơn thành công! Chuyển đến thanh toán...");
-    
-    // Chuyển trang thanh toán
-    navigate("/payment", { 
-      state: { 
-        totalAmount: cartTotal, 
-        cart, 
-        orderId: orderResult._id 
-      } 
-    });
+localStorage.setItem("currentOrderId", orderId);
+localStorage.setItem("cartData", JSON.stringify(cart));
+localStorage.setItem("cartTotal", cartTotal.toString());
+
+console.log(`📝 Đã tạo đơn hàng #${orderId}, chuyển đến thanh toán`);
+
+message.success("Tạo đơn thành công! Chuyển đến thanh toán...");
+
+navigate("/payment", { 
+  state: { 
+    totalAmount: cartTotal, 
+    cart, 
+    orderId 
+  } 
+});
+
 
   } catch (err) {
   console.error("❌ Lỗi tạo đơn:", err);
